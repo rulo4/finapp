@@ -1,0 +1,13 @@
+- [x] Verify that the copilot-instructions.md file in the .github directory is created. Summary: archivo creado en la raíz del proyecto.
+- [x] Clarify Project Requirements. Summary: React 19 + TypeScript + Vite en frontend, Supabase en backend, navegación lateral y módulos financieros base.
+- [x] Scaffold the Project. Summary: base manual creada en la carpeta actual con Vite, TypeScript, routing, estilos y estructura inicial.
+- [x] Customize the Project. Summary: se agregaron páginas placeholder, layout principal, integración inicial de Supabase y una grilla editable base con `react-data-grid`.
+- [x] Install Required Extensions. Summary: no extensions needed.
+- [x] Compile the Project. Summary: dependencias instaladas y build exitoso con `npm run build`.
+- [x] Create and Run Task. Summary: se creó la tarea `dev` en .vscode/tasks.json y se ejecutó desde VS Code.
+- [x] Launch the Project. Summary: paso omitido por ahora; no se inició una sesión de debug porque no fue solicitada explícitamente.
+- [x] Ensure Documentation is Complete. Summary: README.md y este archivo existen y reflejan el estado actual del proyecto.
+
+- Work through each checklist item systematically.
+- Keep communication concise and focused.
+- Follow development best practices.
