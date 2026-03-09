@@ -84,7 +84,7 @@ Evitar anunciar como V1 final mientras existan modulos placeholder o incompletos
 - fuente de verdad del codigo: GitHub
 
 ## Estrategia de entornos
-- `local`: Supabase local + `npm run dev`
+- `local`: `npm run supabase:start` + `npm run dev`
 - `staging`: proyecto Supabase Cloud de pruebas + proyecto Pages de pruebas o previews por rama
 - `production`: proyecto Supabase Cloud productivo + proyecto Pages productivo
 
@@ -225,9 +225,10 @@ Si vas a usar dominio propio:
 npm run dev
 npm run build
 npm run preview
-npx supabase start
-npx supabase status
-npx supabase db reset
+npm run supabase:start
+npm run supabase:status
+npm run supabase:stop
+npm run supabase:reset
 ```
 
 ## Seguridad y privacidad
