@@ -18,15 +18,16 @@ const initialRows: SampleRow[] = [
 
 export function SampleGrid({ primaryLabel }: { primaryLabel: string }) {
   const [rows, setRows] = useState(initialRows);
+  const defaultColumnWidth = 120;
 
   const columns = useMemo<readonly Column<SampleRow>[]>(
     () => [
-      { key: 'date', name: 'Fecha', frozen: true, width: 120, renderEditCell: renderTextEditor },
-      { key: 'primary', name: primaryLabel, frozen: true, minWidth: 180, renderEditCell: renderTextEditor },
-      { key: 'secondary', name: 'Secundario', minWidth: 140, renderEditCell: renderTextEditor },
-      { key: 'amount', name: 'Monto', minWidth: 120, renderEditCell: renderTextEditor }
+      { key: 'date', name: 'Fecha', frozen: true, width: defaultColumnWidth, renderEditCell: renderTextEditor },
+      { key: 'primary', name: primaryLabel, frozen: true, width: defaultColumnWidth, renderEditCell: renderTextEditor },
+      { key: 'secondary', name: 'Secundario', width: defaultColumnWidth, renderEditCell: renderTextEditor },
+      { key: 'amount', name: 'Monto', width: defaultColumnWidth, renderEditCell: renderTextEditor }
     ],
-    [primaryLabel],
+    [defaultColumnWidth, primaryLabel],
   );
 
   return (

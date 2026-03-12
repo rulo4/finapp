@@ -87,6 +87,8 @@ const catalogConfigs: CatalogConfig[] = [
 ];
 
 const defaultCatalog = catalogConfigs[0];
+const DEFAULT_COLUMN_WIDTH = 120;
+const LONG_DESCRIPTION_COLUMN_WIDTH = 240;
 
 function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -422,7 +424,7 @@ export function CatalogsPage() {
       {
         key: 'actions',
         name: 'Acciones',
-        width: 144,
+        width: 108,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => (
@@ -431,7 +433,7 @@ export function CatalogsPage() {
               <>
                 <button
                   type="button"
-                  className="grid-action"
+                  className="grid-action grid-action--save"
                   title="Guardar"
                   aria-label="Guardar"
                   onClick={(event) => {
@@ -447,7 +449,7 @@ export function CatalogsPage() {
                 {!row.isDraft ? (
                   <button
                     type="button"
-                    className="grid-action"
+                    className="grid-action grid-action--revert"
                     title="Revertir"
                     aria-label="Revertir"
                     onClick={(event) => {
@@ -463,7 +465,7 @@ export function CatalogsPage() {
             ) : null}
             <button
               type="button"
-              className="grid-action"
+              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
               title={row.isDraft ? 'Limpiar' : 'Eliminar'}
               aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
               onClick={(event) => {
@@ -480,14 +482,13 @@ export function CatalogsPage() {
       {
         key: 'name',
         name: 'Nombre',
-        frozen: true,
-        minWidth: 220,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Nuevo registro" />,
       },
       {
         key: 'description',
         name: 'Descripcion',
-        minWidth: 240,
+        width: selectedCatalog.key === 'expense_categories' ? LONG_DESCRIPTION_COLUMN_WIDTH : DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => row.description || '-',
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Contexto opcional" />,
       },
@@ -497,19 +498,11 @@ export function CatalogsPage() {
       baseColumns.push({
         key: 'instrumentType',
         name: 'Tipo',
-        minWidth: 170,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => row.instrumentType || '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={instrumentTypeOptions} />,
       });
     }
-
-    baseColumns.push({
-      key: 'isActive',
-      name: 'Activo',
-      width: 110,
-      renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
-      renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
-    });
 
     return baseColumns;
   }, [handleDeleteRow, handleRevertRow, persistCatalogRow, selectedCatalog]);
@@ -520,68 +513,53 @@ export function CatalogsPage() {
   return (
     <div className="page">
       <section className="card catalog-layout">
-        <div className="catalog-main">
-          <section className="catalog-panel catalog-panel--selector">
-            <div>
-              <h3 className="card__title">Catalogos disponibles</h3>
+        <section className="catalog-panel">
+          <div className="catalog-panel__header catalog-panel__header--compact">
+            <div className="catalog-selector">
+              <select value={selectedCatalogKey} onChange={(event) => setSelectedCatalogKey(event.target.value)} aria-label="Catalogo activo">
+                {catalogConfigs.map((catalog) => (
+                  <option key={catalog.key} value={catalog.key}>
+                    {catalog.label}
+                  </option>
+                ))}
+              </select>
             </div>
-            <div className="catalog-tabs catalog-tabs--inline">
-              {catalogConfigs.map((catalog) => (
-                <button
-                  key={catalog.key}
-                  type="button"
-                  className={`catalog-tab ${catalog.key === selectedCatalog.key ? 'catalog-tab--active' : ''}`}
-                  onClick={() => setSelectedCatalogKey(catalog.key)}
-                >
-                  <span className="catalog-tab__title">{catalog.label}</span>
-                </button>
-              ))}
-            </div>
-          </section>
+            <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
+              {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}
+            </span>
+          </div>
 
-          <section className="catalog-panel">
-            <div className="catalog-panel__header">
-              <div>
-                <h3 className="card__title">{selectedCatalog.label}</h3>
-                <p className="card__text">{selectedCatalog.description}</p>
-              </div>
-              <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
-                {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}
-              </span>
-            </div>
+          {visibleErrorMessage ? <div className="feedback-banner feedback-banner--error">{visibleErrorMessage}</div> : null}
 
-            {visibleErrorMessage ? <div className="feedback-banner feedback-banner--error">{visibleErrorMessage}</div> : null}
-
-            <div className="grid-wrapper grid-wrapper--tall">
-              <DataGrid
-                ref={gridRef}
-                columns={columns}
-                rows={rows}
-                rowKeyGetter={(row) => row.id}
-                onRowsChange={handleRowsChange}
-                onCellClick={(args) => {
-                  if (args.column.renderEditCell) {
-                    args.selectCell(true);
-                  }
-                }}
-                onSelectedCellChange={(args) => {
-                  if (args.row && args.column.renderEditCell) {
-                    focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-                  }
-                }}
-                defaultColumnOptions={{ resizable: true }}
-                rowClass={(row) => {
-                  if (row.status === 'saving') return 'row-saving';
-                  if (row.status === 'error') return 'row-error';
-                  if (row.status === 'new') return 'row-new';
-                  if (row.status === 'dirty') return 'row-dirty';
-                  return 'row-saved';
-                }}
-                style={{ blockSize: 520 }}
-              />
-            </div>
-          </section>
-        </div>
+          <div className="grid-wrapper grid-wrapper--tall">
+            <DataGrid
+              ref={gridRef}
+              columns={columns}
+              rows={rows}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleRowsChange}
+              onCellClick={(args) => {
+                if (args.column.renderEditCell) {
+                  args.selectCell(true);
+                }
+              }}
+              onSelectedCellChange={(args) => {
+                if (args.row && args.column.renderEditCell) {
+                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                }
+              }}
+              defaultColumnOptions={{ resizable: true }}
+              rowClass={(row) => {
+                if (row.status === 'saving') return 'row-saving';
+                if (row.status === 'error') return 'row-error';
+                if (row.status === 'new') return 'row-new';
+                if (row.status === 'dirty') return 'row-dirty';
+                return 'row-saved';
+              }}
+              style={{ blockSize: 500 }}
+            />
+          </div>
+        </section>
       </section>
     </div>
   );

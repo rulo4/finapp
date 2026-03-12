@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { type RenderEditCellProps } from 'react-data-grid';
+import { ISO_DATE_PLACEHOLDER } from './isoDate';
 
 type EditorRow = Record<string, unknown>;
 
@@ -9,7 +10,7 @@ export type SelectOption = {
 };
 
 type InputCellEditorProps<TRow extends EditorRow> = RenderEditCellProps<TRow> & {
-  inputType?: 'text' | 'number' | 'date';
+  inputType?: 'text' | 'number' | 'date' | 'iso-date';
   min?: string;
   step?: string;
   placeholder?: string;
@@ -27,6 +28,7 @@ export function InputCellEditor<TRow extends EditorRow>({
 }: InputCellEditorProps<TRow>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const key = column.key as keyof TRow;
+  const isIsoDateInput = inputType === 'iso-date';
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -37,10 +39,13 @@ export function InputCellEditor<TRow extends EditorRow>({
     <input
       ref={inputRef}
       className="grid-cell-editor"
-      type={inputType}
+      type={isIsoDateInput ? 'text' : inputType}
       min={min}
       step={step}
-      placeholder={placeholder}
+      inputMode={isIsoDateInput ? 'numeric' : undefined}
+      maxLength={isIsoDateInput ? 10 : undefined}
+      pattern={isIsoDateInput ? '\\d{4}-\\d{2}-\\d{2}' : undefined}
+      placeholder={placeholder ?? (isIsoDateInput ? ISO_DATE_PLACEHOLDER : undefined)}
       value={String(row[key] ?? '')}
       onChange={(event) => {
         onRowChange({ ...row, [key]: event.target.value } as TRow);
