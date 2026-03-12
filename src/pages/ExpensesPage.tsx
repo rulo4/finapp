@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCopy, faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
@@ -88,6 +89,9 @@ function normalizeExpenseEntry(row: ExpenseEntryRow): ExpenseEntry {
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
 }
+
+const DEFAULT_COLUMN_WIDTH = 120;
+const CONCEPT_COLUMN_WIDTH = 180;
 
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
@@ -176,6 +180,12 @@ function canSaveDraftExpenseRow(row: ExpenseGridRow) {
 
 function getExpenseRowIssues(row: ExpenseGridRow) {
   const issues: string[] = [];
+
+  if (!row.entryDate) {
+    issues.push('captura la fecha');
+  } else if (!isIsoDateString(row.entryDate)) {
+    issues.push('usa el formato AAAA-MM-DD');
+  }
 
   if (!row.concept.trim()) {
     issues.push('captura un concepto');
@@ -349,6 +359,10 @@ function evaluateArithmeticExpression(expression: string) {
 }
 
 function validateExpenseRow(row: ExpenseGridRow) {
+  if (!isIsoDateString(row.entryDate)) {
+    return 'La fecha debe usar el formato AAAA-MM-DD.';
+  }
+
   if (!row.concept.trim()) {
     return 'El concepto es obligatorio.';
   }
@@ -793,7 +807,7 @@ export function ExpensesPage() {
       {
         key: 'actions',
         name: 'Acciones',
-        width: 144,
+        width: 108,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => (
@@ -802,7 +816,7 @@ export function ExpensesPage() {
               <>
                 <button
                   type="button"
-                  className="grid-action"
+                  className="grid-action grid-action--save"
                   title="Guardar"
                   aria-label="Guardar"
                   onClick={(event) => {
@@ -818,7 +832,7 @@ export function ExpensesPage() {
                 {!row.isDraft ? (
                   <button
                     type="button"
-                    className="grid-action"
+                    className="grid-action grid-action--revert"
                     title="Revertir"
                     aria-label="Revertir"
                     onClick={(event) => {
@@ -834,7 +848,7 @@ export function ExpensesPage() {
             ) : null}
             <button
               type="button"
-              className="grid-action"
+              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
               title={row.isDraft ? 'Limpiar' : 'Eliminar'}
               aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
               onClick={(event) => {
@@ -851,55 +865,53 @@ export function ExpensesPage() {
       {
         key: 'entryDate',
         name: 'Fecha',
-        frozen: true,
-        width: 130,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="date" />,
+        width: DEFAULT_COLUMN_WIDTH,
+        renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
         key: 'concept',
         name: 'Concepto',
-        frozen: true,
-        minWidth: 190,
+        width: CONCEPT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Supermercado, renta, gasolina" />,
       },
       {
         key: 'quantity',
         name: 'Cantidad',
-        width: 110,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="Cantidad" />,
       },
       {
         key: 'unitOfMeasureId',
         name: 'Unidad',
-        minWidth: 140,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => unitLabelById.get(row.unitOfMeasureId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={unitOptions} />,
       },
       {
         key: 'categoryId',
         name: 'Categoria',
-        minWidth: 160,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => categoryLabelById.get(row.categoryId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
       {
         key: 'paymentInstrumentId',
         name: 'Instrumento',
-        minWidth: 160,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
       },
       {
         key: 'storeId',
         name: 'Tienda',
-        minWidth: 160,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => storeLabelById.get(row.storeId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
       },
       {
         key: 'currencyCode',
         name: 'Moneda',
-        width: 90,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => (
           <SelectCellEditor
             {...props}
@@ -913,26 +925,26 @@ export function ExpensesPage() {
       {
         key: 'subtotalOriginal',
         name: 'Subtotal',
-        minWidth: 130,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="137.00" />,
       },
       {
         key: 'fxRateToMxn',
         name: 'FX a MXN',
-        minWidth: 130,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1.000000" />,
       },
       {
         key: 'totalAmountMxn',
         name: 'Total MXN',
-        minWidth: 130,
+        width: DEFAULT_COLUMN_WIDTH,
         editable: false,
       },
       {
         key: 'notes',
         name: 'Notas',
-        minWidth: 220,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Observaciones opcionales" />,
       },
     ],
@@ -1037,9 +1049,6 @@ export function ExpensesPage() {
     <div className="page">
       <section className="card finance-panel">
         <div className="finance-panel__header">
-          <div>
-            <h3 className="card__title">Grilla de egresos</h3>
-          </div>
           <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
             {isLoading ? 'Cargando' : `${summary.count} registros`}
           </span>
@@ -1048,12 +1057,6 @@ export function ExpensesPage() {
         <div className="grid-toolbar">
           <div className="badge-row">
             <span className="badge">Total visible MXN: {summary.totalMxn.toFixed(2)}</span>
-            <span className="badge">RLS activo</span>
-            {summary.topCategories.map(([categoryName, total]) => (
-              <span key={categoryName} className="badge">
-                {categoryName}: {total.toFixed(2)}
-              </span>
-            ))}
           </div>
         </div>
 
@@ -1097,7 +1100,6 @@ export function ExpensesPage() {
           <div className="mobile-expense">
             <div className="mobile-expense__picker">
               <div className="mobile-expense__picker-header">
-                <strong>Registros</strong>
                 <span>
                   {visibleMobileRows.length} de {rows.length}
                 </span>
@@ -1140,9 +1142,6 @@ export function ExpensesPage() {
             {selectedMobileRow ? (
               <div className="mobile-expense__editor">
                 <div className="mobile-expense__editor-header">
-                  <div>
-                    <h3 className="card__title">{selectedMobileRow.isDraft ? 'Nuevo egreso' : 'Editar egreso'}</h3>
-                  </div>
                   <span className={`status-pill status-pill--${selectedMobileRow.status === 'error' ? 'checking' : 'ok'}`}>
                     {getExpenseStatusLabel(selectedMobileRow)}
                   </span>
@@ -1190,7 +1189,11 @@ export function ExpensesPage() {
                   <label className="mobile-form__field">
                     <span>Fecha</span>
                     <input
-                      type="date"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      placeholder={ISO_DATE_PLACEHOLDER}
                       value={selectedMobileRow.entryDate}
                       onChange={(event) => updateExpenseRow(selectedMobileRow.id, { entryDate: event.target.value })}
                     />

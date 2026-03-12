@@ -40,7 +40,6 @@ export function AppShell() {
       <aside className={clsx('sidebar', isCompactShell && 'sidebar--compact', isMobileNavOpen && 'sidebar--open')}>
         <div className="sidebar__brand">
           <h1 className="sidebar__title">Finapp</h1>
-          <p className="sidebar__subtitle">Captura financiera tipo hoja de cálculo</p>
           <button type="button" className="sidebar__close" onClick={() => setIsMobileNavOpen(false)}>
             Cerrar
           </button>
@@ -71,11 +70,9 @@ export function AppShell() {
               Menu
             </button>
             <h2 className="topbar__title">{getPageTitle(location.pathname)}</h2>
-            <p className="topbar__caption">Base inicial con React 19, Vite y Supabase.</p>
           </div>
           <div className="topbar__actions">
             <div className="topbar__session">
-              <span className="topbar__session-label">Sesion activa</span>
               <strong>{user?.email ?? 'Usuario autenticado'}</strong>
             </div>
             <button type="button" className="topbar__button" onClick={() => void signOut()}>

@@ -3,6 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
@@ -69,6 +70,8 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+const DEFAULT_COLUMN_WIDTH = 120;
+
 function createDraftIncomeRow(defaultSourceId = ''): IncomeGridRow {
   return {
     id: createLocalId('income-draft'),
@@ -130,6 +133,8 @@ function getIncomeRowIssues(row: IncomeGridRow) {
 
   if (!row.entryDate) {
     issues.push('captura la fecha');
+  } else if (!isIsoDateString(row.entryDate)) {
+    issues.push('usa el formato AAAA-MM-DD');
   }
 
   if (!row.sourceId) {
@@ -166,6 +171,10 @@ function formatIncomeIssuesMessage(row: IncomeGridRow) {
 }
 
 function validateIncomeRow(row: IncomeGridRow) {
+  if (!isIsoDateString(row.entryDate)) {
+    return 'La fecha debe usar el formato AAAA-MM-DD.';
+  }
+
   if (!row.sourceId) {
     return 'Selecciona una fuente.';
   }
@@ -527,7 +536,7 @@ export function IncomePage() {
       {
         key: 'actions',
         name: 'Acciones',
-        width: 144,
+        width: 108,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => (
@@ -536,7 +545,7 @@ export function IncomePage() {
               <>
                 <button
                   type="button"
-                  className="grid-action"
+                  className="grid-action grid-action--save"
                   title="Guardar"
                   aria-label="Guardar"
                   onClick={(event) => {
@@ -552,7 +561,7 @@ export function IncomePage() {
                 {!row.isDraft ? (
                   <button
                     type="button"
-                    className="grid-action"
+                    className="grid-action grid-action--revert"
                     title="Revertir"
                     aria-label="Revertir"
                     onClick={(event) => {
@@ -568,7 +577,7 @@ export function IncomePage() {
             ) : null}
             <button
               type="button"
-              className="grid-action"
+              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
               title={row.isDraft ? 'Limpiar' : 'Eliminar'}
               aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
               onClick={(event) => {
@@ -585,22 +594,20 @@ export function IncomePage() {
       {
         key: 'entryDate',
         name: 'Fecha',
-        frozen: true,
-        width: 130,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="date" />,
+        width: DEFAULT_COLUMN_WIDTH,
+        renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
         key: 'sourceId',
         name: 'Fuente',
-        frozen: true,
-        minWidth: 180,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => sourceLabelById.get(row.sourceId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={sourceOptions} />,
       },
       {
         key: 'currencyCode',
         name: 'Moneda',
-        width: 90,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => (
           <SelectCellEditor
             {...props}
@@ -614,26 +621,26 @@ export function IncomePage() {
       {
         key: 'amountOriginal',
         name: 'Monto original',
-        minWidth: 150,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0.00" />,
       },
       {
         key: 'fxRateToMxn',
         name: 'FX a MXN',
-        minWidth: 130,
+        width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1.000000" />,
       },
       {
         key: 'amountMxn',
         name: 'Monto MXN',
-        minWidth: 140,
+        width: DEFAULT_COLUMN_WIDTH,
         editable: false,
       },
       {
         key: 'notes',
         name: 'Notas',
-        minWidth: 220,
+        width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Detalle opcional" />,
       },
     ],
@@ -696,9 +703,6 @@ export function IncomePage() {
     <div className="page">
       <section className="card finance-panel">
         <div className="finance-panel__header">
-          <div>
-            <h3 className="card__title">Grilla de ingresos</h3>
-          </div>
           <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
             {isLoading ? 'Cargando' : `${summary.count} registros`}
           </span>
@@ -707,7 +711,6 @@ export function IncomePage() {
         <div className="grid-toolbar">
           <div className="badge-row">
             <span className="badge">Total visible MXN: {summary.totalMxn.toFixed(2)}</span>
-            <span className="badge">RLS activo</span>
           </div>
         </div>
 
@@ -717,7 +720,6 @@ export function IncomePage() {
           <div className="mobile-income">
             <div className="mobile-income__picker">
               <div className="mobile-income__picker-header">
-                <strong>Registros</strong>
                 <span>
                   {visibleMobileRows.length} de {rows.length}
                 </span>
@@ -760,9 +762,6 @@ export function IncomePage() {
             {selectedMobileRow ? (
               <div className="mobile-income__editor">
                 <div className="mobile-income__editor-header">
-                  <div>
-                    <h3 className="card__title">{selectedMobileRow.isDraft ? 'Nuevo ingreso' : 'Editar ingreso'}</h3>
-                  </div>
                   <span className={`status-pill status-pill--${selectedMobileRow.status === 'error' ? 'checking' : 'ok'}`}>
                     {getIncomeStatusLabel(selectedMobileRow)}
                   </span>
@@ -774,7 +773,11 @@ export function IncomePage() {
                   <label className="mobile-form__field">
                     <span>Fecha</span>
                     <input
-                      type="date"
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={10}
+                      pattern="\d{4}-\d{2}-\d{2}"
+                      placeholder={ISO_DATE_PLACEHOLDER}
                       value={selectedMobileRow.entryDate}
                       onChange={(event) => updateIncomeRow(selectedMobileRow.id, { entryDate: event.target.value })}
                     />
@@ -915,7 +918,7 @@ export function IncomePage() {
                   if (row.status === 'dirty') return 'row-dirty';
                   return 'row-saved';
                 }}
-                style={{ blockSize: 460 }}
+                style={{ blockSize: 500 }}
               />
             </div>
           </>

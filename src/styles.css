@@ -45,18 +45,12 @@ textarea {
 }
 
 .sidebar__brand {
-  margin-bottom: 24px;
+  margin-bottom: 18px;
 }
 
 .sidebar__title {
   margin: 0;
-  font-size: 1.25rem;
-}
-
-.sidebar__subtitle {
-  margin: 4px 0 0;
-  font-size: 0.875rem;
-  color: #9ca3af;
+  font-size: 1.15rem;
 }
 
 .sidebar__close {
@@ -73,11 +67,11 @@ textarea {
 .sidebar__nav {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .sidebar__link {
-  padding: 10px 12px;
+  padding: 8px 10px;
   color: #e5e7eb;
   text-decoration: none;
   border-radius: 10px;
@@ -98,16 +92,16 @@ textarea {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  padding: 20px 24px;
+  gap: 12px;
+  padding: 14px 18px;
   background: #ffffff;
   border-bottom: 1px solid #e5e7eb;
 }
 
 .topbar__leading {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
+  align-items: center;
+  gap: 10px;
   min-width: 0;
 }
 
@@ -128,36 +122,23 @@ textarea {
 
 .topbar__title {
   margin: 0;
-  font-size: 1.5rem;
-}
-
-.topbar__caption {
-  margin: 4px 0 0;
-  color: #6b7280;
+  font-size: 1.25rem;
+  line-height: 1.1;
 }
 
 .topbar__actions {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   min-width: 0;
 }
 
 .topbar__session {
-  display: grid;
-  gap: 2px;
   text-align: right;
 }
 
-.topbar__session-label {
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: #6b7280;
-}
-
 .topbar__button {
-  padding: 10px 14px;
+  padding: 8px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #fff;
@@ -171,13 +152,13 @@ textarea {
 }
 
 .content {
-  padding: 24px;
+  padding: 16px;
   min-width: 0;
 }
 
 .page {
   display: grid;
-  gap: 24px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -268,20 +249,21 @@ textarea {
 .card {
   background: #ffffff;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 14px;
+  padding: 14px;
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
   min-width: 0;
 }
 
 .card__title {
   margin: 0 0 8px;
-  font-size: 1.125rem;
+  font-size: 1rem;
 }
 
 .card__text {
   margin: 0;
   color: #4b5563;
+  font-size: 0.92rem;
   max-width: 100%;
   overflow-wrap: anywhere;
 }
@@ -451,8 +433,8 @@ textarea {
 .grid-toolbar {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 10px;
   flex-wrap: wrap;
 }
 
@@ -463,11 +445,11 @@ textarea {
 }
 
 .badge {
-  padding: 6px 10px;
+  padding: 4px 8px;
   border-radius: 999px;
   background: #eef2ff;
   color: #4338ca;
-  font-size: 0.85rem;
+  font-size: 0.78rem;
 }
 
 .grid-wrapper {
@@ -497,39 +479,80 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   padding: 0;
-  border: 1px solid #cbd5e1;
-  border-radius: 999px;
-  background: #ffffff;
-  color: #334155;
-  font-size: 0.8rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 0.78rem;
   cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
 
 .grid-action:hover {
-  background: #f8fafc;
+  transform: translateY(-1px);
+}
+
+.grid-action--save {
+  background: #eefbf3;
+  border-color: #cfe8d8;
+  color: #2f6b4f;
+}
+
+.grid-action--save:hover {
+  background: #e3f6ea;
+}
+
+.grid-action--revert {
+  background: #fff8e8;
+  border-color: #eeddb4;
+  color: #8a6230;
+}
+
+.grid-action--revert:hover {
+  background: #fdf1cf;
+}
+
+.grid-action--delete {
+  background: #fff1f1;
+  border-color: #efcaca;
+  color: #a15454;
+}
+
+.grid-action--delete:hover {
+  background: #fde4e4;
+}
+
+.grid-action--clear {
+  background: #f4f6f8;
+  border-color: #d9e0e8;
+  color: #5b6776;
+}
+
+.grid-action--clear:hover {
+  background: #e9edf2;
 }
 
 .grid-actions {
   display: flex;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
 }
 
 .mobile-income {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .mobile-income__picker,
 .mobile-income__editor {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
   min-width: 0;
 }
@@ -572,16 +595,16 @@ textarea {
 
 .mobile-expense {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .mobile-expense__picker,
 .mobile-expense__editor {
   display: grid;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
   min-width: 0;
 }
@@ -767,29 +790,29 @@ textarea {
 
 .mobile-form {
   display: grid;
-  gap: 14px;
+  gap: 10px;
 }
 
 .mobile-form__split {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 10px;
 }
 
 .mobile-form__field {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   color: #334155;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
 .mobile-form__field input,
 .mobile-form__field select,
 .mobile-form__field textarea {
   width: 100%;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid #cbd5e1;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
 }
 
@@ -798,9 +821,9 @@ textarea {
   justify-content: space-between;
   align-items: center;
   gap: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #f8fafc;
   color: #334155;
 }
@@ -812,14 +835,14 @@ textarea {
 .mobile-form__actions {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 8px;
 }
 
 .mobile-form__button {
   min-height: 44px;
-  padding: 10px 14px;
+  padding: 9px 12px;
   border: 1px solid #cbd5e1;
-  border-radius: 12px;
+  border-radius: 10px;
   background: #fff;
   color: #0f172a;
   font-weight: 700;
@@ -840,64 +863,27 @@ textarea {
 
 .catalog-layout {
   display: grid;
-  gap: 16px;
-}
-
-.catalog-main,
-.catalog-panel {
-  display: grid;
-  gap: 16px;
-}
-
-.catalog-tabs {
-  display: grid;
-  gap: 8px;
-}
-
-.catalog-tabs--inline {
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-}
-
-.catalog-tab {
-  display: grid;
-  gap: 2px;
-  width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #dbe4f0;
-  border-radius: 12px;
-  background: #f8fafc;
-  color: #0f172a;
-  text-align: left;
-  cursor: pointer;
-}
-
-.catalog-tab:hover,
-.catalog-tab--active {
-  background: #e8f0ff;
-  border-color: #93c5fd;
-}
-
-.catalog-tab__title {
-  font-weight: 700;
-  font-size: 0.9rem;
+  gap: 12px;
 }
 
 .catalog-panel {
-  padding: 18px;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
   border: 1px solid #e5e7eb;
-  border-radius: 16px;
+  border-radius: 14px;
   background: #fff;
-}
-
-.catalog-panel--selector {
-  gap: 10px;
 }
 
 .catalog-panel__header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 10px;
+}
+
+.catalog-panel__header--compact {
+  align-items: center;
 }
 
 .catalog-panel__header > div,
@@ -905,6 +891,18 @@ textarea {
 .mobile-income__editor-header > div,
 .mobile-income__picker-header > strong {
   min-width: 0;
+}
+
+.catalog-selector {
+  min-width: min(100%, 340px);
+}
+
+.catalog-selector select {
+  width: 100%;
+  padding: 9px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
 }
 
 .catalog-form {
@@ -973,19 +971,19 @@ textarea {
 
 .finance-layout {
   display: grid;
-  gap: 24px;
+  gap: 14px;
 }
 
 .finance-panel {
   display: grid;
-  gap: 16px;
+  gap: 12px;
 }
 
 .finance-panel__header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
+  align-items: center;
+  gap: 10px;
 }
 
 .finance-form {
@@ -1040,6 +1038,15 @@ textarea {
   --rdg-border-color: #e5e7eb;
   --rdg-row-hover-background-color: #f8fafc;
   --rdg-selection-color: #93c5fd;
+  color: #1f2937;
+}
+
+.rdg-cell {
+  color: #1f2937;
+}
+
+.rdg-header-cell {
+  color: #0f172a;
 }
 
 .row-new {
@@ -1072,7 +1079,7 @@ textarea {
 
 .mini-calculator__input {
   min-width: 0;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #fff;
@@ -1080,7 +1087,7 @@ textarea {
 
 .mini-calculator__result {
   min-width: 72px;
-  padding: 8px 10px;
+  padding: 7px 10px;
   border-radius: 10px;
   background: #f8fafc;
   border: 1px solid #e5e7eb;
@@ -1117,9 +1124,9 @@ textarea {
 }
 
 .feedback-banner {
-  margin-top: 12px;
-  padding: 12px 14px;
-  border-radius: 12px;
+  margin-top: 6px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid #dbeafe;
   background: #f8fbff;
   color: #1e3a8a;
@@ -1202,7 +1209,7 @@ textarea {
   }
 
   .content {
-    padding: 18px;
+    padding: 14px;
   }
 
   .status-row {
@@ -1272,7 +1279,7 @@ textarea {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: start;
-    padding: 16px 18px;
+    padding: 12px 14px;
   }
 
   .topbar__leading,
@@ -1301,11 +1308,11 @@ textarea {
   }
 
   .content {
-    padding: 14px;
+    padding: 12px;
   }
 
   .card {
-    padding: 16px;
+    padding: 12px;
     border-radius: 14px;
   }
 

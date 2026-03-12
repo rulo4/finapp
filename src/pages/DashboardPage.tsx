@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import {
   checkSupabaseConnection,
   getSupabaseConfig,
@@ -96,10 +97,17 @@ export function DashboardPage() {
   const [periodStart, setPeriodStart] = useState(defaultWindow.start);
   const [periodEnd, setPeriodEnd] = useState(defaultWindow.end);
   const { url, anonKeyLoaded } = getSupabaseConfig();
-  const hasInvalidRange = periodStart > periodEnd;
+  const hasInvalidFormat = !isIsoDateString(periodStart) || !isIsoDateString(periodEnd);
+  const hasInvalidRange = !hasInvalidFormat && periodStart > periodEnd;
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
+      return;
+    }
+
+    if (hasInvalidFormat) {
+      setDashboardMessage('El periodo no es valido: usa el formato AAAA-MM-DD.');
+      setIsMetricsLoading(false);
       return;
     }
 
@@ -223,7 +231,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasInvalidRange, periodEnd, periodStart]);
+  }, [hasInvalidFormat, hasInvalidRange, periodEnd, periodStart]);
 
   return (
     <div className="page">
@@ -262,15 +270,33 @@ export function DashboardPage() {
         <div className="dashboard-filters__grid">
           <label className="field-label dashboard-filters__field">
             <span>Desde</span>
-            <input type="date" value={periodStart} max={periodEnd || getTodayDate()} onChange={(event) => setPeriodStart(event.target.value)} />
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={10}
+              pattern="\d{4}-\d{2}-\d{2}"
+              placeholder={ISO_DATE_PLACEHOLDER}
+              value={periodStart}
+              onChange={(event) => setPeriodStart(event.target.value)}
+            />
           </label>
           <label className="field-label dashboard-filters__field">
             <span>Hasta</span>
-            <input type="date" value={periodEnd} min={periodStart} max={getTodayDate()} onChange={(event) => setPeriodEnd(event.target.value)} />
+            <input
+              type="text"
+              inputMode="numeric"
+              maxLength={10}
+              pattern="\d{4}-\d{2}-\d{2}"
+              placeholder={ISO_DATE_PLACEHOLDER}
+              value={periodEnd}
+              onChange={(event) => setPeriodEnd(event.target.value)}
+            />
           </label>
         </div>
 
-        {hasInvalidRange ? (
+        {hasInvalidFormat ? (
+          <p className="inline-hint">Usa fechas en formato AAAA-MM-DD.</p>
+        ) : hasInvalidRange ? (
           <p className="inline-hint">La fecha inicial no puede ser mayor que la fecha final.</p>
         ) : (
           <p className="inline-hint">
