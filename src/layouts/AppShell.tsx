@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faAnglesLeft, faAnglesRight, faBars } from '@fortawesome/free-solid-svg-icons';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { navigationItems } from '../config/navigation';
 import { useAuth } from '../features/auth/AuthContext';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
+
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'finapp.sidebar.collapsed';
 
 function getPageTitle(pathname: string) {
   const match = navigationItems.find((item) => pathname.startsWith(item.to));
@@ -15,6 +19,16 @@ export function AppShell() {
   const { user, signOut } = useAuth();
   const isCompactShell = useMediaQuery('(max-width: 900px)');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+
+  useEffect(() => {
+    const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+    setIsSidebarCollapsed(storedValue === 'true');
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(isSidebarCollapsed));
+  }, [isSidebarCollapsed]);
 
   useEffect(() => {
     setIsMobileNavOpen(false);
@@ -26,8 +40,10 @@ export function AppShell() {
     }
   }, [isCompactShell]);
 
+  const isSidebarIconOnly = !isCompactShell && isSidebarCollapsed;
+
   return (
-    <div className="app-shell">
+    <div className={clsx('app-shell', isSidebarIconOnly && 'app-shell--sidebar-collapsed')}>
       <button
         type="button"
         className={clsx('shell-backdrop', isMobileNavOpen && 'shell-backdrop--visible')}
@@ -37,12 +53,30 @@ export function AppShell() {
         onClick={() => setIsMobileNavOpen(false)}
       />
 
-      <aside className={clsx('sidebar', isCompactShell && 'sidebar--compact', isMobileNavOpen && 'sidebar--open')}>
+      <aside className={clsx('sidebar', isCompactShell && 'sidebar--compact', isSidebarIconOnly && 'sidebar--collapsed', isMobileNavOpen && 'sidebar--open')}>
         <div className="sidebar__brand">
-          <h1 className="sidebar__title">Finapp</h1>
-          <button type="button" className="sidebar__close" onClick={() => setIsMobileNavOpen(false)}>
-            Cerrar
-          </button>
+          <div className="sidebar__brand-main">
+            <span className="sidebar__brand-mark" aria-hidden="true">
+              F
+            </span>
+            {!isSidebarIconOnly ? <h1 className="sidebar__title">Finapp</h1> : null}
+          </div>
+          <div className="sidebar__brand-actions">
+            {!isCompactShell ? (
+              <button
+                type="button"
+                className="sidebar__toggle"
+                onClick={() => setIsSidebarCollapsed((currentValue) => !currentValue)}
+                aria-label={isSidebarIconOnly ? 'Expandir sidebar' : 'Compactar sidebar'}
+                title={isSidebarIconOnly ? 'Expandir sidebar' : 'Compactar sidebar'}
+              >
+                <FontAwesomeIcon icon={isSidebarIconOnly ? faAnglesRight : faAnglesLeft} />
+              </button>
+            ) : null}
+            <button type="button" className="sidebar__close" onClick={() => setIsMobileNavOpen(false)}>
+              Cerrar
+            </button>
+          </div>
         </div>
 
         <nav className="sidebar__nav">
@@ -50,6 +84,8 @@ export function AppShell() {
             <NavLink
               key={item.to}
               to={item.to}
+              title={isSidebarIconOnly ? item.label : undefined}
+              aria-label={item.label}
               onClick={() => {
                 if (isCompactShell) {
                   setIsMobileNavOpen(false);
@@ -57,7 +93,8 @@ export function AppShell() {
               }}
               className={({ isActive }) => clsx('sidebar__link', isActive && 'sidebar__link--active')}
             >
-              {item.label}
+              <FontAwesomeIcon icon={item.icon} className="sidebar__link-icon" />
+              <span className="sidebar__link-label">{item.label}</span>
             </NavLink>
           ))}
         </nav>
@@ -67,7 +104,8 @@ export function AppShell() {
         <header className="topbar">
           <div className="topbar__leading">
             <button type="button" className="topbar__menu" onClick={() => setIsMobileNavOpen(true)}>
-              Menu
+              <FontAwesomeIcon icon={faBars} />
+              <span>Menu</span>
             </button>
             <h2 className="topbar__title">{getPageTitle(location.pathname)}</h2>
           </div>
