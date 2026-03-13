@@ -5,6 +5,7 @@ import App from './App';
 import { AuthProvider } from './features/auth/AuthContext';
 import './styles.css';
 import 'react-data-grid/lib/styles.css';
+import 'react-datepicker/dist/react-datepicker.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

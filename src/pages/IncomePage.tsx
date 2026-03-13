@@ -3,7 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppDatePicker } from '../features/shared/AppDatePicker';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
@@ -531,6 +532,13 @@ export function IncomePage() {
     () => [{ value: '', label: 'Selecciona una fuente' }, ...sources.map((source) => ({ value: source.id, label: source.name }))],
     [sources],
   );
+  const currencyOptions = useMemo<readonly SelectOption[]>(
+    () => [
+      { value: 'MXN', label: 'MXN' },
+      { value: 'USD', label: 'USD' },
+    ],
+    [],
+  );
   const sourceLabelById = useMemo(() => new Map(sources.map((source) => [source.id, source.name])), [sources]);
 
   const columns = useMemo<readonly Column<IncomeGridRow>[]>(
@@ -610,15 +618,7 @@ export function IncomePage() {
         key: 'currencyCode',
         name: 'Moneda',
         width: DEFAULT_COLUMN_WIDTH,
-        renderEditCell: (props) => (
-          <SelectCellEditor
-            {...props}
-            options={[
-              { value: 'MXN', label: 'MXN' },
-              { value: 'USD', label: 'USD' },
-            ]}
-          />
-        ),
+        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'amountOriginal',
@@ -646,7 +646,7 @@ export function IncomePage() {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Detalle opcional" />,
       },
     ],
-    [handleDeleteRow, handleRevertRow, persistIncomeRow, sourceLabelById, sourceOptions],
+    [currencyOptions, handleDeleteRow, handleRevertRow, persistIncomeRow, sourceLabelById, sourceOptions],
   );
 
   const summary = useMemo(() => {
@@ -774,41 +774,35 @@ export function IncomePage() {
                 <div className="mobile-form">
                   <label className="mobile-form__field">
                     <span>Fecha</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
-                      pattern="\d{4}-\d{2}-\d{2}"
-                      placeholder={ISO_DATE_PLACEHOLDER}
+                    <AppDatePicker
+                      ariaLabel="Fecha"
+                      className="mobile-form__control"
                       value={selectedMobileRow.entryDate}
-                      onChange={(event) => updateIncomeRow(selectedMobileRow.id, { entryDate: event.target.value })}
+                      onChange={(value) => updateIncomeRow(selectedMobileRow.id, { entryDate: value })}
+                      placeholder={ISO_DATE_PLACEHOLDER}
                     />
                   </label>
 
                   <label className="mobile-form__field">
                     <span>Fuente</span>
-                    <select
+                    <AppSelect
+                      ariaLabel="Fuente"
+                      options={sourceOptions}
                       value={selectedMobileRow.sourceId}
-                      onChange={(event) => updateIncomeRow(selectedMobileRow.id, { sourceId: event.target.value })}
-                    >
-                      {sourceOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateIncomeRow(selectedMobileRow.id, { sourceId: value })}
+                    />
                   </label>
 
                   <div className="mobile-form__split">
                     <label className="mobile-form__field">
                       <span>Moneda</span>
-                      <select
+                      <AppSelect
+                        ariaLabel="Moneda"
+                        options={currencyOptions}
                         value={selectedMobileRow.currencyCode}
-                        onChange={(event) => updateIncomeRow(selectedMobileRow.id, { currencyCode: event.target.value as 'MXN' | 'USD' })}
-                      >
-                        <option value="MXN">MXN</option>
-                        <option value="USD">USD</option>
-                      </select>
+                        onChange={(value) => updateIncomeRow(selectedMobileRow.id, { currencyCode: value as 'MXN' | 'USD' })}
+                        isSearchable={false}
+                      />
                     </label>
 
                     <label className="mobile-form__field">

@@ -595,6 +595,40 @@ textarea {
   outline: none;
 }
 
+.react-datepicker-wrapper,
+.react-datepicker__input-container {
+  display: block;
+  width: 100%;
+}
+
+.react-datepicker-popper {
+  z-index: 30;
+}
+
+.react-datepicker__portal {
+  background: transparent;
+}
+
+.app-date-picker__input {
+  width: 100%;
+}
+
+.dashboard-filters__control,
+.mobile-form__control {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.dashboard-filters__control:focus,
+.mobile-form__control:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.18);
+  outline-offset: 1px;
+}
+
 .grid-action {
   display: inline-flex;
   align-items: center;
@@ -928,12 +962,14 @@ textarea {
 
 .mobile-form__field input,
 .mobile-form__field select,
-.mobile-form__field textarea {
+.mobile-form__field textarea,
+.mobile-form__control {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
   background: #fff;
+  color: #0f172a;
 }
 
 .mobile-income__computed {
