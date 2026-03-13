@@ -1279,6 +1279,14 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .app-shell--mobile-layout-disabled {
+    grid-template-columns: 248px 1fr;
+  }
+
+  .app-shell--mobile-layout-disabled.app-shell--sidebar-collapsed {
+    grid-template-columns: 84px 1fr;
+  }
+
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1289,6 +1297,16 @@ textarea {
     transition: transform 160ms ease;
     z-index: 30;
     overflow-y: auto;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar {
+    position: static;
+    inset: auto;
+    width: auto;
+    transform: none;
+    transition: none;
+    z-index: auto;
+    overflow-y: visible;
   }
 
   .sidebar--open {
@@ -1302,6 +1320,16 @@ textarea {
   }
 
   .sidebar__toggle {
+    display: none;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar__toggle {
+    display: inline-flex;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar__close,
+  .app-shell--mobile-layout-disabled .topbar__menu,
+  .app-shell--mobile-layout-disabled .shell-backdrop {
     display: none;
   }
 
@@ -1325,10 +1353,20 @@ textarea {
     align-items: flex-start;
   }
 
+  .app-shell--mobile-layout-disabled .topbar {
+    align-items: center;
+  }
+
   .topbar__actions,
   .topbar__session {
     width: 100%;
     text-align: left;
+  }
+
+  .app-shell--mobile-layout-disabled .topbar__actions,
+  .app-shell--mobile-layout-disabled .topbar__session {
+    width: auto;
+    text-align: right;
   }
 
   .topbar__actions {
@@ -1336,8 +1374,17 @@ textarea {
     align-items: stretch;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
   .content {
     padding: 14px;
+  }
+
+  .app-shell--mobile-layout-disabled .content {
+    padding: 16px;
   }
 
   .status-row {
@@ -1410,6 +1457,14 @@ textarea {
     padding: 12px 14px;
   }
 
+  .app-shell--mobile-layout-disabled .topbar {
+    position: static;
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    padding: 14px 18px;
+  }
+
   .topbar__leading,
   .topbar__actions {
     min-width: 0;
@@ -1425,14 +1480,26 @@ textarea {
     display: none;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__session {
+    display: block;
+  }
+
   .topbar__actions {
     width: auto;
     justify-self: end;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__actions {
+    justify-self: auto;
+  }
+
   .topbar__button {
     padding: 10px 12px;
     white-space: nowrap;
+  }
+
+  .app-shell--mobile-layout-disabled .content {
+    padding: 16px;
   }
 
   .content {
