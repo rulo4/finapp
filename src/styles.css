@@ -38,7 +38,7 @@ textarea {
 }
 
 .app-shell--sidebar-collapsed {
-  grid-template-columns: 84px 1fr;
+  grid-template-columns: 56px 1fr;
 }
 
 .sidebar {
@@ -167,7 +167,7 @@ textarea {
 }
 
 .sidebar--collapsed {
-  padding-inline: 12px;
+  padding-inline: 8px;
 }
 
 .sidebar--collapsed .sidebar__brand {
@@ -186,15 +186,19 @@ textarea {
   justify-content: center;
   width: 100%;
   gap: 0;
-  padding-inline: 10px;
+  padding-inline: 0;
 }
 
 .sidebar--collapsed .sidebar__brand-main {
   justify-content: center;
-  gap: 10px;
+  gap: 0;
+  width: 100%;
 }
 
-.sidebar--collapsed .sidebar__title,
+.sidebar--collapsed .sidebar__title {
+  display: none;
+}
+
 .sidebar--collapsed .sidebar__link-label {
   opacity: 0;
   max-width: 0;
@@ -585,7 +589,7 @@ textarea {
 .grid-cell-editor {
   width: 100%;
   height: 100%;
-  padding: 0 10px;
+  padding: 0 8px;
   border: none;
   background: #ffffff;
   color: #0f172a;
@@ -633,11 +637,11 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 100%;
+  height: 100%;
   padding: 0;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
+  border-radius: 0;
   background: #f8fafc;
   color: #475569;
   font-size: 0.74rem;
@@ -690,9 +694,23 @@ textarea {
 }
 
 .grid-actions {
-  display: flex;
-  justify-content: center;
-  gap: 2px;
+  display: grid;
+  width: calc(100% + 16px);
+  height: 100%;
+  margin-inline: -8px;
+}
+
+.grid-actions--1,
+.grid-actions--2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.grid-actions--1 > .grid-action {
+  grid-column: 2;
+}
+
+.grid-actions--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .mobile-income {
@@ -1189,6 +1207,7 @@ textarea {
 }
 
 .rdg {
+  --rdg-font-size: 13px;
   --rdg-background-color: #ffffff;
   --rdg-header-background-color: #f8fafc;
   --rdg-border-color: #e5e7eb;
@@ -1227,7 +1246,7 @@ textarea {
 
 .mini-calculator {
   display: grid;
-  grid-template-columns: minmax(160px, 220px) auto 36px;
+  grid-template-columns: minmax(15ch, 17ch) auto 36px;
   align-items: center;
   gap: 8px;
   justify-content: start;
@@ -1320,7 +1339,7 @@ textarea {
   }
 
   .app-shell--mobile-layout-disabled.app-shell--sidebar-collapsed {
-    grid-template-columns: 84px 1fr;
+    grid-template-columns: 56px 1fr;
   }
 
   .sidebar {
