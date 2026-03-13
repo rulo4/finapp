@@ -3,7 +3,8 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faCopy, faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppDatePicker } from '../features/shared/AppDatePicker';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
@@ -795,6 +796,13 @@ export function ExpensesPage() {
     () => [{ value: '', label: 'Selecciona una unidad' }, ...unitsOfMeasure.map((unit) => ({ value: unit.id, label: unit.name }))],
     [unitsOfMeasure],
   );
+  const currencyOptions = useMemo<readonly SelectOption[]>(
+    () => [
+      { value: 'MXN', label: 'MXN' },
+      { value: 'USD', label: 'USD' },
+    ],
+    [],
+  );
 
   const categoryLabelById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const paymentInstrumentLabelById = useMemo(
@@ -914,15 +922,7 @@ export function ExpensesPage() {
         key: 'currencyCode',
         name: 'Moneda',
         width: DEFAULT_COLUMN_WIDTH,
-        renderEditCell: (props) => (
-          <SelectCellEditor
-            {...props}
-            options={[
-              { value: 'MXN', label: 'MXN' },
-              { value: 'USD', label: 'USD' },
-            ]}
-          />
-        ),
+        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'subtotalOriginal',
@@ -950,7 +950,7 @@ export function ExpensesPage() {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Observaciones opcionales" />,
       },
     ],
-    [categoryLabelById, categoryOptions, handleDeleteRow, handleRevertRow, paymentInstrumentLabelById, paymentInstrumentOptions, persistExpenseRow, storeLabelById, storeOptions, unitLabelById, unitOptions],
+    [categoryLabelById, categoryOptions, currencyOptions, handleDeleteRow, handleRevertRow, paymentInstrumentLabelById, paymentInstrumentOptions, persistExpenseRow, storeLabelById, storeOptions, unitLabelById, unitOptions],
   );
 
   const summary = useMemo(() => {
@@ -1190,14 +1190,12 @@ export function ExpensesPage() {
                 <div className="mobile-form">
                   <label className="mobile-form__field">
                     <span>Fecha</span>
-                    <input
-                      type="text"
-                      inputMode="numeric"
-                      maxLength={10}
-                      pattern="\d{4}-\d{2}-\d{2}"
-                      placeholder={ISO_DATE_PLACEHOLDER}
+                    <AppDatePicker
+                      ariaLabel="Fecha"
+                      className="mobile-form__control"
                       value={selectedMobileRow.entryDate}
-                      onChange={(event) => updateExpenseRow(selectedMobileRow.id, { entryDate: event.target.value })}
+                      onChange={(value) => updateExpenseRow(selectedMobileRow.id, { entryDate: value })}
+                      placeholder={ISO_DATE_PLACEHOLDER}
                     />
                   </label>
 
@@ -1225,73 +1223,57 @@ export function ExpensesPage() {
 
                     <label className="mobile-form__field">
                       <span>Unidad</span>
-                      <select
+                      <AppSelect
+                        ariaLabel="Unidad"
+                        options={unitOptions}
                         value={selectedMobileRow.unitOfMeasureId}
-                        onChange={(event) => updateExpenseRow(selectedMobileRow.id, { unitOfMeasureId: event.target.value })}
-                      >
-                        {unitOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value) => updateExpenseRow(selectedMobileRow.id, { unitOfMeasureId: value })}
+                      />
                     </label>
                   </div>
 
                   <label className="mobile-form__field">
                     <span>Categoria</span>
-                    <select
+                    <AppSelect
+                      ariaLabel="Categoria"
+                      options={categoryOptions}
                       value={selectedMobileRow.categoryId}
-                      onChange={(event) => updateExpenseRow(selectedMobileRow.id, { categoryId: event.target.value })}
-                    >
-                      {categoryOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
+                      onChange={(value) => updateExpenseRow(selectedMobileRow.id, { categoryId: value })}
+                    />
                   </label>
 
                   <div className="mobile-form__split">
                     <label className="mobile-form__field">
                       <span>Instrumento</span>
-                      <select
+                      <AppSelect
+                        ariaLabel="Instrumento"
+                        options={paymentInstrumentOptions}
                         value={selectedMobileRow.paymentInstrumentId}
-                        onChange={(event) => updateExpenseRow(selectedMobileRow.id, { paymentInstrumentId: event.target.value })}
-                      >
-                        {paymentInstrumentOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value) => updateExpenseRow(selectedMobileRow.id, { paymentInstrumentId: value })}
+                      />
                     </label>
 
                     <label className="mobile-form__field">
                       <span>Tienda</span>
-                      <select
+                      <AppSelect
+                        ariaLabel="Tienda"
+                        options={storeOptions}
                         value={selectedMobileRow.storeId}
-                        onChange={(event) => updateExpenseRow(selectedMobileRow.id, { storeId: event.target.value })}
-                      >
-                        {storeOptions.map((option) => (
-                          <option key={option.value} value={option.value}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        onChange={(value) => updateExpenseRow(selectedMobileRow.id, { storeId: value })}
+                      />
                     </label>
                   </div>
 
                   <div className="mobile-form__split">
                     <label className="mobile-form__field">
                       <span>Moneda</span>
-                      <select
+                      <AppSelect
+                        ariaLabel="Moneda"
+                        options={currencyOptions}
                         value={selectedMobileRow.currencyCode}
-                        onChange={(event) => updateExpenseRow(selectedMobileRow.id, { currencyCode: event.target.value as 'MXN' | 'USD' })}
-                      >
-                        <option value="MXN">MXN</option>
-                        <option value="USD">USD</option>
-                      </select>
+                        onChange={(value) => updateExpenseRow(selectedMobileRow.id, { currencyCode: value as 'MXN' | 'USD' })}
+                        isSearchable={false}
+                      />
                     </label>
 
                     <label className="mobile-form__field">

@@ -24,3 +24,12 @@ export function isIsoDateString(value: string) {
     date.getUTCDate() === day
   );
 }
+
+export function parseIsoDateString(value: string) {
+  if (!isIsoDateString(value)) {
+    return null;
+  }
+
+  const [yearText, monthText, dayText] = value.split('-');
+  return new Date(Number(yearText), Number(monthText) - 1, Number(dayText));
+}

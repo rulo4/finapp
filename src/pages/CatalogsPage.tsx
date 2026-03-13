@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type InstrumentType = 'cash' | 'debit_card' | 'credit_card';
@@ -174,6 +174,7 @@ export function CatalogsPage() {
     () => catalogConfigs.find((catalog) => catalog.key === selectedCatalogKey) ?? defaultCatalog,
     [selectedCatalogKey],
   );
+  const catalogOptions = useMemo<readonly SelectOption[]>(() => catalogConfigs.map((catalog) => ({ value: catalog.key, label: catalog.label })), []);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -516,13 +517,7 @@ export function CatalogsPage() {
         <section className="catalog-panel">
           <div className="catalog-panel__header catalog-panel__header--compact">
             <div className="catalog-selector">
-              <select value={selectedCatalogKey} onChange={(event) => setSelectedCatalogKey(event.target.value)} aria-label="Catalogo activo">
-                {catalogConfigs.map((catalog) => (
-                  <option key={catalog.key} value={catalog.key}>
-                    {catalog.label}
-                  </option>
-                ))}
-              </select>
+              <AppSelect ariaLabel="Catalogo activo" options={catalogOptions} value={selectedCatalogKey} onChange={setSelectedCatalogKey} />
             </div>
             <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
               {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}

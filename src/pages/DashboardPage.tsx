@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppDatePicker } from '../features/shared/AppDatePicker';
 import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import {
   checkSupabaseConnection,
@@ -270,26 +271,25 @@ export function DashboardPage() {
         <div className="dashboard-filters__grid">
           <label className="field-label dashboard-filters__field">
             <span>Desde</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={10}
-              pattern="\d{4}-\d{2}-\d{2}"
-              placeholder={ISO_DATE_PLACEHOLDER}
+            <AppDatePicker
+              className="dashboard-filters__control"
+              ariaLabel="Desde"
               value={periodStart}
-              onChange={(event) => setPeriodStart(event.target.value)}
+              onChange={setPeriodStart}
+              max={periodEnd || getTodayDate()}
+              placeholder={ISO_DATE_PLACEHOLDER}
             />
           </label>
           <label className="field-label dashboard-filters__field">
             <span>Hasta</span>
-            <input
-              type="text"
-              inputMode="numeric"
-              maxLength={10}
-              pattern="\d{4}-\d{2}-\d{2}"
-              placeholder={ISO_DATE_PLACEHOLDER}
+            <AppDatePicker
+              className="dashboard-filters__control"
+              ariaLabel="Hasta"
               value={periodEnd}
-              onChange={(event) => setPeriodEnd(event.target.value)}
+              onChange={setPeriodEnd}
+              min={periodStart}
+              max={getTodayDate()}
+              placeholder={ISO_DATE_PLACEHOLDER}
             />
           </label>
         </div>
