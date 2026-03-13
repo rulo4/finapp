@@ -35,12 +35,12 @@ type ExpenseEntry = {
   concept: string;
   quantity: number;
   unit_of_measure_id: string | null;
-  unit_of_measure: string;
+  unit_of_measure: string | null;
   subtotal_original: number | null;
   fx_rate_to_mxn: number | null;
   total_amount_mxn: number;
   currency_code: 'MXN' | 'USD';
-  category_id: string;
+  category_id: string | null;
   payment_instrument_id: string | null;
   store_id: string | null;
   notes: string | null;
@@ -140,7 +140,7 @@ function toExpenseGridRow(entry: ExpenseEntry): ExpenseGridRow {
     concept: entry.concept,
     quantity: formatEditableNumber(entry.quantity),
     unitOfMeasureId: entry.unit_of_measure_id ?? '',
-    categoryId: entry.category_id,
+    categoryId: entry.category_id ?? '',
     paymentInstrumentId: entry.payment_instrument_id ?? '',
     storeId: entry.store_id ?? '',
     currencyCode: entry.currency_code,
@@ -173,8 +173,7 @@ function canSaveDraftExpenseRow(row: ExpenseGridRow) {
   return Boolean(
     row.concept.trim() &&
       row.quantity.trim() &&
-      row.unitOfMeasureId &&
-      row.categoryId &&
+      row.entryDate.trim() &&
       row.subtotalOriginal.trim() &&
       (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
   );
@@ -199,14 +198,6 @@ function getExpenseRowIssues(row: ExpenseGridRow) {
     issues.push('captura la cantidad');
   } else if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
     issues.push('usa una cantidad mayor a cero');
-  }
-
-  if (!row.unitOfMeasureId) {
-    issues.push('selecciona la unidad de medida');
-  }
-
-  if (!row.categoryId) {
-    issues.push('selecciona la categoria');
   }
 
   const parsedSubtotal = Number(row.subtotalOriginal);
@@ -373,14 +364,6 @@ function validateExpenseRow(row: ExpenseGridRow) {
 
   if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
     return 'La cantidad debe ser mayor a cero.';
-  }
-
-  if (!row.unitOfMeasureId) {
-    return 'Selecciona una unidad de medida.';
-  }
-
-  if (!row.categoryId) {
-    return 'Selecciona una categoria.';
   }
 
   const parsedSubtotal = Number(row.subtotalOriginal);
@@ -645,22 +628,6 @@ export function ExpensesPage() {
         return;
       }
 
-      const selectedUnit = unitsOfMeasure.find((unit) => unit.id === row.unitOfMeasureId);
-
-      if (!selectedUnit) {
-        setFeedback('La unidad de medida seleccionada no es valida.');
-        setRows((currentRows) => {
-          const nextRows: ExpenseGridRow[] = currentRows.map((candidate) =>
-            candidate.id === rowId
-              ? { ...candidate, status: 'error', errorMessage: 'La unidad de medida seleccionada no es valida.' }
-              : candidate,
-          );
-          rowsRef.current = nextRows;
-          return nextRows;
-        });
-        return;
-      }
-
       setRows((currentRows) => {
         const nextRows: ExpenseGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'saving', errorMessage: null } : candidate,
@@ -671,19 +638,20 @@ export function ExpensesPage() {
 
       const subtotalOriginal = Number(row.subtotalOriginal);
       const fxRateToMxn = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
+      const selectedUnit = unitsOfMeasure.find((unit) => unit.id === row.unitOfMeasureId) ?? null;
       const payload = {
         entry_date: row.entryDate,
         concept: row.concept.trim(),
         quantity: Number(row.quantity),
-        unit_of_measure: selectedUnit.name,
-        unit_of_measure_id: row.unitOfMeasureId,
+        unit_of_measure: selectedUnit?.name ?? null,
+        unit_of_measure_id: row.unitOfMeasureId || null,
         subtotal_original: Number(subtotalOriginal.toFixed(6)),
         currency_code: row.currencyCode,
         fx_rate_to_mxn: row.currencyCode === 'MXN' ? null : fxRateToMxn,
         total_amount_mxn: Number((subtotalOriginal * fxRateToMxn).toFixed(6)),
         payment_instrument_id: row.paymentInstrumentId || null,
         store_id: row.storeId || null,
-        category_id: row.categoryId,
+        category_id: row.categoryId || null,
         notes: row.notes.trim() || null,
       };
 
@@ -793,7 +761,7 @@ export function ExpensesPage() {
     [stores],
   );
   const unitOptions = useMemo<readonly SelectOption[]>(
-    () => [{ value: '', label: 'Selecciona una unidad' }, ...unitsOfMeasure.map((unit) => ({ value: unit.id, label: unit.name }))],
+    () => [{ value: '', label: 'Sin unidad' }, ...unitsOfMeasure.map((unit) => ({ value: unit.id, label: unit.name }))],
     [unitsOfMeasure],
   );
   const currencyOptions = useMemo<readonly SelectOption[]>(
@@ -892,10 +860,16 @@ export function ExpensesPage() {
       },
       {
         key: 'unitOfMeasureId',
-        name: 'Unidad',
+        name: 'U de medida',
         width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => unitLabelById.get(row.unitOfMeasureId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={unitOptions} />,
+      },
+      {
+        key: 'subtotalOriginal',
+        name: 'Subtotal',
+        width: DEFAULT_COLUMN_WIDTH,
+        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="137.00" />,
       },
       {
         key: 'categoryId',
@@ -906,7 +880,7 @@ export function ExpensesPage() {
       },
       {
         key: 'paymentInstrumentId',
-        name: 'Instrumento',
+        name: 'Pago con',
         width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
@@ -923,12 +897,6 @@ export function ExpensesPage() {
         name: 'Moneda',
         width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
-      },
-      {
-        key: 'subtotalOriginal',
-        name: 'Subtotal',
-        width: DEFAULT_COLUMN_WIDTH,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="137.00" />,
       },
       {
         key: 'fxRateToMxn',
@@ -1224,7 +1192,7 @@ export function ExpensesPage() {
                     <label className="mobile-form__field">
                       <span>Unidad</span>
                       <AppSelect
-                        ariaLabel="Unidad"
+                        ariaLabel="Unidad de medida"
                         options={unitOptions}
                         value={selectedMobileRow.unitOfMeasureId}
                         onChange={(value) => updateExpenseRow(selectedMobileRow.id, { unitOfMeasureId: value })}
@@ -1244,9 +1212,9 @@ export function ExpensesPage() {
 
                   <div className="mobile-form__split">
                     <label className="mobile-form__field">
-                      <span>Instrumento</span>
+                      <span>Pago con</span>
                       <AppSelect
-                        ariaLabel="Instrumento"
+                        ariaLabel="Pago con"
                         options={paymentInstrumentOptions}
                         value={selectedMobileRow.paymentInstrumentId}
                         onChange={(value) => updateExpenseRow(selectedMobileRow.id, { paymentInstrumentId: value })}
