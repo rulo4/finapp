@@ -6,4 +6,5 @@ dist/
 supabase/.temp/
 .DS_Store
 *.log
+*.tsbuildinfo
 supabase-local.log
