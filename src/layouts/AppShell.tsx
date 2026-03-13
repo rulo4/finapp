@@ -59,7 +59,7 @@ export function AppShell() {
             <span className="sidebar__brand-mark" aria-hidden="true">
               F
             </span>
-            {!isSidebarIconOnly ? <h1 className="sidebar__title">Finapp</h1> : null}
+            <h1 className="sidebar__title">Finapp</h1>
           </div>
           <div className="sidebar__brand-actions">
             {!isCompactShell ? (

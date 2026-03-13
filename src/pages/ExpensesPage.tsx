@@ -806,8 +806,8 @@ export function ExpensesPage() {
     () => [
       {
         key: 'actions',
-        name: 'Acciones',
-        width: 108,
+        name: '',
+        width: 78,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => (
