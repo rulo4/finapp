@@ -21,10 +21,16 @@ export function AppShell() {
   const matchesCompactShell = useMediaQuery('(max-width: 900px)');
   const isCompactShell = ENABLE_MOBILE_OPTIMIZED_LAYOUTS && matchesCompactShell;
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(true);
 
   useEffect(() => {
     const storedValue = window.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY);
+
+    if (storedValue == null) {
+      setIsSidebarCollapsed(true);
+      return;
+    }
+
     setIsSidebarCollapsed(storedValue === 'true');
   }, []);
 

@@ -72,7 +72,8 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-const DEFAULT_COLUMN_WIDTH = 120;
+const DEFAULT_COLUMN_WIDTH = 108;
+const GRID_ROW_HEIGHT = 32;
 
 function createDraftIncomeRow(defaultSourceId = ''): IncomeGridRow {
   return {
@@ -230,7 +231,6 @@ export function IncomePage() {
   const [feedback, setFeedback] = useState<string | null>(null);
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [showAllMobileRows, setShowAllMobileRows] = useState(false);
-  const saveTimersRef = useRef<Map<string, number>>(new Map());
   const rowsRef = useRef<IncomeGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, IncomeGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
@@ -241,13 +241,6 @@ export function IncomePage() {
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-
-  useEffect(() => {
-    return () => {
-      saveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      saveTimersRef.current.clear();
-    };
-  }, []);
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -307,15 +300,6 @@ export function IncomePage() {
     void loadIncomeData();
   }, [loadIncomeData]);
 
-  function clearSaveTimer(rowId: string) {
-    const timer = saveTimersRef.current.get(rowId);
-
-    if (timer) {
-      window.clearTimeout(timer);
-      saveTimersRef.current.delete(rowId);
-    }
-  }
-
   function commitActiveEditorAndRun(action: () => void) {
     const activeElement = document.activeElement;
 
@@ -354,12 +338,6 @@ export function IncomePage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
-
-    if (normalizedRow.isDraft && !validationMessage && shouldPersist) {
-      queueIncomeRowSave(normalizedRow.id);
-    } else {
-      clearSaveTimer(normalizedRow.id);
-    }
   }
 
   function updateIncomeRow(rowId: string, updates: Partial<IncomeGridRow>) {
@@ -457,17 +435,6 @@ export function IncomePage() {
     [loadIncomeData],
   );
 
-  function queueIncomeRowSave(rowId: string) {
-    clearSaveTimer(rowId);
-
-    const timer = window.setTimeout(() => {
-      saveTimersRef.current.delete(rowId);
-      void persistIncomeRow(rowId);
-    }, 500);
-
-    saveTimersRef.current.set(rowId, timer);
-  }
-
   const handleDeleteRow = useCallback(
     async (row: IncomeGridRow) => {
       if (row.isDraft) {
@@ -519,7 +486,6 @@ export function IncomePage() {
       return;
     }
 
-    clearSaveTimer(row.id);
     setRows((currentRows) => {
       const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate));
       rowsRef.current = nextRows;
@@ -549,57 +515,62 @@ export function IncomePage() {
         width: 78,
         frozen: true,
         editable: false,
-        renderCell: ({ row }) => (
-          <div className="grid-actions">
-            {row.isDraft || row.status === 'dirty' || row.status === 'error' ? (
-              <>
-                <button
-                  type="button"
-                  className="grid-action grid-action--save"
-                  title="Guardar"
-                  aria-label="Guardar"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    commitActiveEditorAndRun(() => {
-                      void persistIncomeRow(row.id);
-                    });
-                  }}
-                >
-                  <FontAwesomeIcon icon={faFloppyDisk} />
-                </button>
-                {!row.isDraft ? (
+        renderCell: ({ row }) => {
+          const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
+          const actionCount = showPrimaryActions ? 2 : 1;
+
+          return (
+            <div className={`grid-actions grid-actions--${actionCount}`}>
+              {showPrimaryActions ? (
+                <>
                   <button
                     type="button"
-                    className="grid-action grid-action--revert"
-                    title="Revertir"
-                    aria-label="Revertir"
+                    className="grid-action grid-action--save"
+                    title="Guardar"
+                    aria-label="Guardar"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      commitActiveEditorAndRun(() => {
+                        void persistIncomeRow(row.id);
+                      });
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faFloppyDisk} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
+                    title={row.isDraft ? 'Limpiar' : 'Deshacer'}
+                    aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       handleRevertRow(row);
                     }}
                   >
-                    <FontAwesomeIcon icon={faRotateLeft} />
+                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
                   </button>
-                ) : null}
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
-              title={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void handleDeleteRow(row);
-              }}
-            >
-              <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
-            </button>
-          </div>
-        ),
+                </>
+              ) : null}
+              {!showPrimaryActions ? (
+                <button
+                  type="button"
+                  className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
+                  title={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleDeleteRow(row);
+                  }}
+                >
+                  <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
+                </button>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         key: 'entryDate',
@@ -649,15 +620,6 @@ export function IncomePage() {
     [currencyOptions, handleDeleteRow, handleRevertRow, persistIncomeRow, sourceLabelById, sourceOptions],
   );
 
-  const summary = useMemo(() => {
-    const persistedRows = rows.filter((row) => !row.isDraft);
-    const totalMxn = persistedRows.reduce((sum, row) => sum + Number(row.amountMxn || 0), 0);
-
-    return {
-      count: persistedRows.length,
-      totalMxn,
-    };
-  }, [rows]);
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage;
@@ -704,18 +666,6 @@ export function IncomePage() {
   return (
     <div className="page">
       <section className="card finance-panel">
-        <div className="finance-panel__header">
-          <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
-            {isLoading ? 'Cargando' : `${summary.count} registros`}
-          </span>
-        </div>
-
-        <div className="grid-toolbar">
-          <div className="badge-row">
-            <span className="badge">Total visible MXN: {summary.totalMxn.toFixed(2)}</span>
-          </div>
-        </div>
-
         {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
 
         {isMobile ? (
@@ -894,6 +844,8 @@ export function IncomePage() {
                 ref={gridRef}
                 columns={columns}
                 rows={rows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={GRID_ROW_HEIGHT}
                 rowKeyGetter={(row) => row.id}
                 onRowsChange={handleRowsChange}
                 onCellClick={(args) => {

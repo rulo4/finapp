@@ -92,8 +92,20 @@ function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
-const DEFAULT_COLUMN_WIDTH = 120;
-const CONCEPT_COLUMN_WIDTH = 180;
+const ACTION_COLUMN_WIDTH = 64;
+const DATE_COLUMN_WIDTH = 96;
+const CONCEPT_COLUMN_WIDTH = 208;
+const QUANTITY_COLUMN_WIDTH = 72;
+const UNIT_COLUMN_WIDTH = 84;
+const SUBTOTAL_COLUMN_WIDTH = 88;
+const CATEGORY_COLUMN_WIDTH = 104;
+const PAYMENT_COLUMN_WIDTH = 96;
+const STORE_COLUMN_WIDTH = 76;
+const CURRENCY_COLUMN_WIDTH = 84;
+const FX_COLUMN_WIDTH = 84;
+const TOTAL_COLUMN_WIDTH = 92;
+const NOTES_COLUMN_WIDTH = 120;
+const GRID_ROW_HEIGHT = 32;
 
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
@@ -420,7 +432,6 @@ export function ExpensesPage() {
   const [showAllMobileRows, setShowAllMobileRows] = useState(false);
   const [calculatorExpression, setCalculatorExpression] = useState('');
   const [calculatorCopyState, setCalculatorCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
-  const saveTimersRef = useRef<Map<string, number>>(new Map());
   const rowsRef = useRef<ExpenseGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, ExpenseGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
@@ -431,13 +442,6 @@ export function ExpensesPage() {
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-
-  useEffect(() => {
-    return () => {
-      saveTimersRef.current.forEach((timer) => window.clearTimeout(timer));
-      saveTimersRef.current.clear();
-    };
-  }, []);
 
   useEffect(() => {
     if (rows.length === 0) {
@@ -520,15 +524,6 @@ export function ExpensesPage() {
     void loadExpenseData();
   }, [loadExpenseData]);
 
-  function clearSaveTimer(rowId: string) {
-    const timer = saveTimersRef.current.get(rowId);
-
-    if (timer) {
-      window.clearTimeout(timer);
-      saveTimersRef.current.delete(rowId);
-    }
-  }
-
   function commitActiveEditorAndRun(action: () => void) {
     const activeElement = document.activeElement;
 
@@ -567,12 +562,6 @@ export function ExpensesPage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
-
-    if (normalizedRow.isDraft && !validationMessage && shouldPersist) {
-      queueExpenseRowSave(normalizedRow.id);
-    } else {
-      clearSaveTimer(normalizedRow.id);
-    }
   }
 
   function updateExpenseRow(rowId: string, updates: Partial<ExpenseGridRow>) {
@@ -677,17 +666,6 @@ export function ExpensesPage() {
     [loadExpenseData, unitsOfMeasure],
   );
 
-  function queueExpenseRowSave(rowId: string) {
-    clearSaveTimer(rowId);
-
-    const timer = window.setTimeout(() => {
-      saveTimersRef.current.delete(rowId);
-      void persistExpenseRow(rowId);
-    }, 500);
-
-    saveTimersRef.current.set(rowId, timer);
-  }
-
   const handleDeleteRow = useCallback(
     async (row: ExpenseGridRow) => {
       if (row.isDraft) {
@@ -739,7 +717,6 @@ export function ExpensesPage() {
       return;
     }
 
-    clearSaveTimer(row.id);
     setRows((currentRows) => {
       const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate));
       rowsRef.current = nextRows;
@@ -785,65 +762,70 @@ export function ExpensesPage() {
       {
         key: 'actions',
         name: '',
-        width: 78,
+        width: ACTION_COLUMN_WIDTH,
         frozen: true,
         editable: false,
-        renderCell: ({ row }) => (
-          <div className="grid-actions">
-            {row.isDraft || row.status === 'dirty' || row.status === 'error' ? (
-              <>
-                <button
-                  type="button"
-                  className="grid-action grid-action--save"
-                  title="Guardar"
-                  aria-label="Guardar"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    commitActiveEditorAndRun(() => {
-                      void persistExpenseRow(row.id);
-                    });
-                  }}
-                >
-                  <FontAwesomeIcon icon={faFloppyDisk} />
-                </button>
-                {!row.isDraft ? (
+        renderCell: ({ row }) => {
+          const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
+          const actionCount = showPrimaryActions ? 2 : 1;
+
+          return (
+            <div className={`grid-actions grid-actions--${actionCount}`}>
+              {showPrimaryActions ? (
+                <>
                   <button
                     type="button"
-                    className="grid-action grid-action--revert"
-                    title="Revertir"
-                    aria-label="Revertir"
+                    className="grid-action grid-action--save"
+                    title="Guardar"
+                    aria-label="Guardar"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      commitActiveEditorAndRun(() => {
+                        void persistExpenseRow(row.id);
+                      });
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faFloppyDisk} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
+                    title={row.isDraft ? 'Limpiar' : 'Deshacer'}
+                    aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       handleRevertRow(row);
                     }}
                   >
-                    <FontAwesomeIcon icon={faRotateLeft} />
+                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
                   </button>
-                ) : null}
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
-              title={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void handleDeleteRow(row);
-              }}
-            >
-              <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
-            </button>
-          </div>
-        ),
+                </>
+              ) : null}
+              {!showPrimaryActions ? (
+                <button
+                  type="button"
+                  className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
+                  title={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleDeleteRow(row);
+                  }}
+                >
+                  <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
+                </button>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         key: 'entryDate',
         name: 'Fecha',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: DATE_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
@@ -855,89 +837,72 @@ export function ExpensesPage() {
       {
         key: 'quantity',
         name: 'Cantidad',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: QUANTITY_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="Cantidad" />,
       },
       {
         key: 'unitOfMeasureId',
         name: 'U de medida',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: UNIT_COLUMN_WIDTH,
         renderCell: ({ row }) => unitLabelById.get(row.unitOfMeasureId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={unitOptions} />,
       },
       {
         key: 'subtotalOriginal',
         name: 'Subtotal',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: SUBTOTAL_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0.00" />,
       },
       {
         key: 'categoryId',
         name: 'Categoria',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: CATEGORY_COLUMN_WIDTH,
         renderCell: ({ row }) => categoryLabelById.get(row.categoryId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
       {
         key: 'paymentInstrumentId',
         name: 'Pago con',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: PAYMENT_COLUMN_WIDTH,
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
       },
       {
         key: 'storeId',
         name: 'Tienda',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: STORE_COLUMN_WIDTH,
         renderCell: ({ row }) => storeLabelById.get(row.storeId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
       },
       {
         key: 'currencyCode',
         name: 'Moneda',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: CURRENCY_COLUMN_WIDTH,
         renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'fxRateToMxn',
         name: 'FX a MXN',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: FX_COLUMN_WIDTH,
         renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1.000000" />,
       },
       {
         key: 'totalAmountMxn',
         name: 'Total MXN',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: TOTAL_COLUMN_WIDTH,
         editable: false,
       },
       {
         key: 'notes',
         name: 'Notas',
-        width: DEFAULT_COLUMN_WIDTH,
+        width: NOTES_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Observaciones opcionales" />,
       },
     ],
     [categoryLabelById, categoryOptions, currencyOptions, handleDeleteRow, handleRevertRow, paymentInstrumentLabelById, paymentInstrumentOptions, persistExpenseRow, storeLabelById, storeOptions, unitLabelById, unitOptions],
   );
 
-  const summary = useMemo(() => {
-    const persistedRows = rows.filter((row) => !row.isDraft);
-    const totalMxn = persistedRows.reduce((sum, row) => sum + Number(row.totalAmountMxn || 0), 0);
-    const totalsByCategory = persistedRows.reduce<Record<string, number>>((accumulator, row) => {
-      const categoryName = categoryLabelById.get(row.categoryId) ?? 'Sin categoria';
-      accumulator[categoryName] = (accumulator[categoryName] ?? 0) + Number(row.totalAmountMxn || 0);
-      return accumulator;
-    }, {});
-
-    return {
-      count: persistedRows.length,
-      totalMxn,
-      topCategories: Object.entries(totalsByCategory)
-        .sort((left, right) => right[1] - left[1])
-        .slice(0, 3),
-    };
-  }, [categoryLabelById, rows]);
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage ?? feedback;
@@ -1018,18 +983,6 @@ export function ExpensesPage() {
   return (
     <div className="page">
       <section className="card finance-panel">
-        <div className="finance-panel__header">
-          <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
-            {isLoading ? 'Cargando' : `${summary.count} registros`}
-          </span>
-        </div>
-
-        <div className="grid-toolbar">
-          <div className="badge-row">
-            <span className="badge">Total visible MXN: {summary.totalMxn.toFixed(2)}</span>
-          </div>
-        </div>
-
         <div className="mini-calculator" aria-label="Calculadora rapida de subtotal">
           <input
             type="text"
@@ -1333,6 +1286,8 @@ export function ExpensesPage() {
                 ref={gridRef}
                 columns={columns}
                 rows={rows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={GRID_ROW_HEIGHT}
                 rowKeyGetter={(row) => row.id}
                 onRowsChange={handleRowsChange}
                 onCellClick={(args) => {

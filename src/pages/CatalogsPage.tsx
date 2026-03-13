@@ -87,8 +87,9 @@ const catalogConfigs: CatalogConfig[] = [
 ];
 
 const defaultCatalog = catalogConfigs[0];
-const DEFAULT_COLUMN_WIDTH = 120;
-const LONG_DESCRIPTION_COLUMN_WIDTH = 240;
+const DEFAULT_COLUMN_WIDTH = 108;
+const LONG_DESCRIPTION_COLUMN_WIDTH = 220;
+const GRID_ROW_HEIGHT = 32;
 
 function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -428,57 +429,62 @@ export function CatalogsPage() {
         width: 78,
         frozen: true,
         editable: false,
-        renderCell: ({ row }) => (
-          <div className="grid-actions">
-            {row.isDraft || row.status === 'dirty' || row.status === 'error' ? (
-              <>
-                <button
-                  type="button"
-                  className="grid-action grid-action--save"
-                  title="Guardar"
-                  aria-label="Guardar"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    commitActiveEditorAndRun(() => {
-                      void persistCatalogRow(row.id);
-                    });
-                  }}
-                >
-                  <FontAwesomeIcon icon={faFloppyDisk} />
-                </button>
-                {!row.isDraft ? (
+        renderCell: ({ row }) => {
+          const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
+          const actionCount = showPrimaryActions ? 2 : 1;
+
+          return (
+            <div className={`grid-actions grid-actions--${actionCount}`}>
+              {showPrimaryActions ? (
+                <>
                   <button
                     type="button"
-                    className="grid-action grid-action--revert"
-                    title="Revertir"
-                    aria-label="Revertir"
+                    className="grid-action grid-action--save"
+                    title="Guardar"
+                    aria-label="Guardar"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      commitActiveEditorAndRun(() => {
+                        void persistCatalogRow(row.id);
+                      });
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faFloppyDisk} />
+                  </button>
+                  <button
+                    type="button"
+                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
+                    title={row.isDraft ? 'Limpiar' : 'Deshacer'}
+                    aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
                     onClick={(event) => {
                       event.preventDefault();
                       event.stopPropagation();
                       handleRevertRow(row);
                     }}
                   >
-                    <FontAwesomeIcon icon={faRotateLeft} />
+                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
                   </button>
-                ) : null}
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
-              title={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
-              onClick={(event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                void handleDeleteRow(row);
-              }}
-            >
-              <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
-            </button>
-          </div>
-        ),
+                </>
+              ) : null}
+              {!showPrimaryActions ? (
+                <button
+                  type="button"
+                  className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
+                  title={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleDeleteRow(row);
+                  }}
+                >
+                  <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
+                </button>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         key: 'name',
@@ -531,6 +537,8 @@ export function CatalogsPage() {
               ref={gridRef}
               columns={columns}
               rows={rows}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={GRID_ROW_HEIGHT}
               rowKeyGetter={(row) => row.id}
               onRowsChange={handleRowsChange}
               onCellClick={(args) => {
