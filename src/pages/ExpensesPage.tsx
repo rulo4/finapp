@@ -122,7 +122,7 @@ function createDraftExpenseRow(): ExpenseGridRow {
     paymentInstrumentId: '',
     storeId: '',
     currencyCode: 'MXN',
-    subtotalOriginal: '',
+    subtotalOriginal: '0',
     fxRateToMxn: '1',
     totalAmountMxn: '',
     notes: '',
@@ -161,7 +161,7 @@ function normalizeExpenseGridRow(row: ExpenseGridRow): ExpenseGridRow {
     fxRateToMxn,
     totalAmountMxn:
       Number.isFinite(parsedSubtotal) &&
-      parsedSubtotal > 0 &&
+      parsedSubtotal >= 0 &&
       Number.isFinite(parsedFxRate) &&
       parsedFxRate > 0
         ? formatEditableNumber(Number((parsedSubtotal * parsedFxRate).toFixed(6)))
@@ -204,8 +204,8 @@ function getExpenseRowIssues(row: ExpenseGridRow) {
 
   if (!row.subtotalOriginal.trim()) {
     issues.push('captura el subtotal');
-  } else if (!Number.isFinite(parsedSubtotal) || parsedSubtotal <= 0) {
-    issues.push('usa un subtotal mayor a cero');
+  } else if (!Number.isFinite(parsedSubtotal) || parsedSubtotal < 0) {
+    issues.push('usa un subtotal igual o mayor a cero');
   }
 
   const parsedFxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
@@ -368,8 +368,8 @@ function validateExpenseRow(row: ExpenseGridRow) {
 
   const parsedSubtotal = Number(row.subtotalOriginal);
 
-  if (!Number.isFinite(parsedSubtotal) || parsedSubtotal <= 0) {
-    return 'El subtotal debe ser mayor a cero.';
+  if (!Number.isFinite(parsedSubtotal) || parsedSubtotal < 0) {
+    return 'El subtotal debe ser igual o mayor a cero.';
   }
 
   const parsedFxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
@@ -399,7 +399,7 @@ function getExpenseStatusLabel(row: ExpenseGridRow) {
 function formatExpenseMxnValue(value: string) {
   const parsedValue = Number(value);
 
-  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
+  if (!Number.isFinite(parsedValue) || parsedValue < 0) {
     return 'Pendiente';
   }
 
@@ -869,7 +869,7 @@ export function ExpensesPage() {
         key: 'subtotalOriginal',
         name: 'Subtotal',
         width: DEFAULT_COLUMN_WIDTH,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="137.00" />,
+        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0.00" />,
       },
       {
         key: 'categoryId',
@@ -1251,7 +1251,7 @@ export function ExpensesPage() {
                         min="0"
                         step="0.01"
                         value={selectedMobileRow.subtotalOriginal}
-                        placeholder="137.00"
+                        placeholder="0.00"
                         onChange={(event) => updateExpenseRow(selectedMobileRow.id, { subtotalOriginal: event.target.value })}
                       />
                     </label>
