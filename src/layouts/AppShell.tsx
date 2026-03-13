@@ -4,6 +4,7 @@ import { faAnglesLeft, faAnglesRight, faBars } from '@fortawesome/free-solid-svg
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { navigationItems } from '../config/navigation';
+import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
 import { useAuth } from '../features/auth/AuthContext';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 
@@ -17,7 +18,8 @@ function getPageTitle(pathname: string) {
 export function AppShell() {
   const location = useLocation();
   const { user, signOut } = useAuth();
-  const isCompactShell = useMediaQuery('(max-width: 900px)');
+  const matchesCompactShell = useMediaQuery('(max-width: 900px)');
+  const isCompactShell = ENABLE_MOBILE_OPTIMIZED_LAYOUTS && matchesCompactShell;
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -43,7 +45,13 @@ export function AppShell() {
   const isSidebarIconOnly = !isCompactShell && isSidebarCollapsed;
 
   return (
-    <div className={clsx('app-shell', isSidebarIconOnly && 'app-shell--sidebar-collapsed')}>
+    <div
+      className={clsx(
+        'app-shell',
+        isSidebarIconOnly && 'app-shell--sidebar-collapsed',
+        !ENABLE_MOBILE_OPTIMIZED_LAYOUTS && 'app-shell--mobile-layout-disabled',
+      )}
+    >
       <button
         type="button"
         className={clsx('shell-backdrop', isMobileNavOpen && 'shell-backdrop--visible')}
@@ -59,7 +67,7 @@ export function AppShell() {
             <span className="sidebar__brand-mark" aria-hidden="true">
               F
             </span>
-            {!isSidebarIconOnly ? <h1 className="sidebar__title">Finapp</h1> : null}
+            <h1 className="sidebar__title">Finapp</h1>
           </div>
           <div className="sidebar__brand-actions">
             {!isCompactShell ? (

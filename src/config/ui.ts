@@ -1,0 +1,1 @@
+export const ENABLE_MOBILE_OPTIMIZED_LAYOUTS = false;

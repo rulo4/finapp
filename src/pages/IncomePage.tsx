@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
@@ -233,7 +234,8 @@ export function IncomePage() {
   const persistedRowsRef = useRef<Map<string, IncomeGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
   const autoEditCellRef = useRef<string | null>(null);
-  const isMobile = useMediaQuery('(max-width: 768px)');
+  const matchesMobile = useMediaQuery('(max-width: 768px)');
+  const isMobile = ENABLE_MOBILE_OPTIMIZED_LAYOUTS && matchesMobile;
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -535,8 +537,8 @@ export function IncomePage() {
     () => [
       {
         key: 'actions',
-        name: 'Acciones',
-        width: 108,
+        name: '',
+        width: 78,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => (

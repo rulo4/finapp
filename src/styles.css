@@ -53,9 +53,10 @@ textarea {
 
 .sidebar__brand {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: stretch;
   gap: 10px;
+  min-block-size: 90px;
   margin-bottom: 18px;
 }
 
@@ -65,6 +66,12 @@ textarea {
   align-items: center;
   gap: 10px;
   min-width: 0;
+}
+
+.sidebar__brand-actions {
+  min-height: 40px;
+  justify-content: center;
+  align-items: stretch;
 }
 
 .sidebar__brand-mark {
@@ -84,6 +91,8 @@ textarea {
   margin: 0;
   font-size: 1.15rem;
   white-space: nowrap;
+  opacity: 1;
+  max-width: 160px;
 }
 
 .sidebar__close,
@@ -91,7 +100,9 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 9px 12px;
+  inline-size: 100%;
+  block-size: 40px;
+  padding: 0;
   border: 1px solid #374151;
   border-radius: 10px;
   background: #111827;
@@ -101,6 +112,8 @@ textarea {
 
 .sidebar__close {
   display: none;
+  inline-size: auto;
+  padding: 9px 12px;
 }
 
 .sidebar__toggle:hover,
@@ -117,23 +130,31 @@ textarea {
 .sidebar__link {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   min-height: 40px;
   padding: 8px 10px;
+  border: 1px solid #374151;
   color: #e5e7eb;
   text-decoration: none;
   border-radius: 10px;
+  background: #111827;
 }
 
 .sidebar__link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 18px;
   flex-shrink: 0;
+  text-align: center;
 }
 
 .sidebar__link-label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  opacity: 1;
+  max-width: 220px;
 }
 
 .sidebar__link:hover,
@@ -141,13 +162,16 @@ textarea {
   background: #1f2937;
 }
 
+.sidebar__link--active {
+  border-color: #4b5563;
+}
+
 .sidebar--collapsed {
   padding-inline: 12px;
 }
 
 .sidebar--collapsed .sidebar__brand {
-  flex-direction: column;
-  margin-bottom: 12px;
+  margin-bottom: 18px;
 }
 
 .sidebar--collapsed .sidebar__brand-actions {
@@ -155,17 +179,25 @@ textarea {
 }
 
 .sidebar--collapsed .sidebar__nav {
-  align-items: center;
+  align-items: stretch;
 }
 
 .sidebar--collapsed .sidebar__link {
   justify-content: center;
-  width: 44px;
-  padding-inline: 0;
+  width: 100%;
+  gap: 0;
+  padding-inline: 10px;
 }
 
+.sidebar--collapsed .sidebar__brand-main {
+  justify-content: center;
+  gap: 10px;
+}
+
+.sidebar--collapsed .sidebar__title,
 .sidebar--collapsed .sidebar__link-label {
-  display: none;
+  opacity: 0;
+  max-width: 0;
 }
 
 .main {
@@ -567,14 +599,14 @@ textarea {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 24px;
+  height: 24px;
   padding: 0;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #f8fafc;
   color: #475569;
-  font-size: 0.78rem;
+  font-size: 0.74rem;
   cursor: pointer;
   transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
 }
@@ -626,7 +658,7 @@ textarea {
 .grid-actions {
   display: flex;
   justify-content: center;
-  gap: 4px;
+  gap: 2px;
 }
 
 .mobile-income {
@@ -1247,6 +1279,14 @@ textarea {
     grid-template-columns: 1fr;
   }
 
+  .app-shell--mobile-layout-disabled {
+    grid-template-columns: 248px 1fr;
+  }
+
+  .app-shell--mobile-layout-disabled.app-shell--sidebar-collapsed {
+    grid-template-columns: 84px 1fr;
+  }
+
   .sidebar {
     position: fixed;
     inset: 0 auto 0 0;
@@ -1257,6 +1297,16 @@ textarea {
     transition: transform 160ms ease;
     z-index: 30;
     overflow-y: auto;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar {
+    position: static;
+    inset: auto;
+    width: auto;
+    transform: none;
+    transition: none;
+    z-index: auto;
+    overflow-y: visible;
   }
 
   .sidebar--open {
@@ -1270,6 +1320,16 @@ textarea {
   }
 
   .sidebar__toggle {
+    display: none;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar__toggle {
+    display: inline-flex;
+  }
+
+  .app-shell--mobile-layout-disabled .sidebar__close,
+  .app-shell--mobile-layout-disabled .topbar__menu,
+  .app-shell--mobile-layout-disabled .shell-backdrop {
     display: none;
   }
 
@@ -1293,10 +1353,20 @@ textarea {
     align-items: flex-start;
   }
 
+  .app-shell--mobile-layout-disabled .topbar {
+    align-items: center;
+  }
+
   .topbar__actions,
   .topbar__session {
     width: 100%;
     text-align: left;
+  }
+
+  .app-shell--mobile-layout-disabled .topbar__actions,
+  .app-shell--mobile-layout-disabled .topbar__session {
+    width: auto;
+    text-align: right;
   }
 
   .topbar__actions {
@@ -1304,8 +1374,17 @@ textarea {
     align-items: stretch;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__actions {
+    flex-direction: row;
+    align-items: center;
+  }
+
   .content {
     padding: 14px;
+  }
+
+  .app-shell--mobile-layout-disabled .content {
+    padding: 16px;
   }
 
   .status-row {
@@ -1378,6 +1457,14 @@ textarea {
     padding: 12px 14px;
   }
 
+  .app-shell--mobile-layout-disabled .topbar {
+    position: static;
+    display: flex;
+    grid-template-columns: none;
+    align-items: center;
+    padding: 14px 18px;
+  }
+
   .topbar__leading,
   .topbar__actions {
     min-width: 0;
@@ -1393,14 +1480,26 @@ textarea {
     display: none;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__session {
+    display: block;
+  }
+
   .topbar__actions {
     width: auto;
     justify-self: end;
   }
 
+  .app-shell--mobile-layout-disabled .topbar__actions {
+    justify-self: auto;
+  }
+
   .topbar__button {
     padding: 10px 12px;
     white-space: nowrap;
+  }
+
+  .app-shell--mobile-layout-disabled .content {
+    padding: 16px;
   }
 
   .content {
