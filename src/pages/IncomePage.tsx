@@ -47,6 +47,13 @@ type IncomeGridRow = {
   notes: string;
 };
 
+type IncomeDateFilterMode = 'all' | 'month' | 'year' | 'custom';
+
+type IncomeDateRange = {
+  start: string;
+  end: string;
+};
+
 function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
   const relation = Array.isArray(row.income_sources) ? row.income_sources[0] ?? null : row.income_sources;
 
@@ -58,6 +65,25 @@ function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getStartOfCurrentMonth() {
+  const today = new Date();
+
+  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function getStartOfCurrentYear() {
+  const today = new Date();
+
+  return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+}
+
+function getDefaultCustomDateRange(): IncomeDateRange {
+  return {
+    start: getStartOfCurrentMonth(),
+    end: getTodayDate(),
+  };
 }
 
 function formatEditableNumber(value: number | null | undefined) {
@@ -229,6 +255,8 @@ export function IncomePage() {
   const [rows, setRows] = useState<IncomeGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [dateFilterMode, setDateFilterMode] = useState<IncomeDateFilterMode>('month');
+  const [customDateRange, setCustomDateRange] = useState<IncomeDateRange>(() => getDefaultCustomDateRange());
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [showAllMobileRows, setShowAllMobileRows] = useState(false);
   const rowsRef = useRef<IncomeGridRow[]>([]);
@@ -253,7 +281,56 @@ export function IncomePage() {
     }
   }, [rows, selectedRowId]);
 
+  const dateFilterError = useMemo(() => {
+    if (dateFilterMode !== 'custom') {
+      return null;
+    }
+
+    if (!customDateRange.start || !customDateRange.end) {
+      return 'Completa la fecha inicial y final para aplicar el rango.';
+    }
+
+    if (customDateRange.start > customDateRange.end) {
+      return 'La fecha inicial no puede ser posterior a la fecha final.';
+    }
+
+    return null;
+  }, [customDateRange.end, customDateRange.start, dateFilterMode]);
+
+  const activeDateRange = useMemo(() => {
+    if (dateFilterMode === 'month') {
+      return {
+        start: getStartOfCurrentMonth(),
+        end: getTodayDate(),
+      };
+    }
+
+    if (dateFilterMode === 'year') {
+      return {
+        start: getStartOfCurrentYear(),
+        end: getTodayDate(),
+      };
+    }
+
+    if (dateFilterMode === 'custom') {
+      if (dateFilterError) {
+        return null;
+      }
+
+      return customDateRange;
+    }
+
+    return {
+      start: '',
+      end: '',
+    };
+  }, [customDateRange, dateFilterError, dateFilterMode]);
+
   const loadIncomeData = useCallback(async () => {
+    if (!activeDateRange) {
+      return;
+    }
+
     if (!supabase || !isSupabaseConfigured()) {
       setFeedback('Supabase no esta configurado para este entorno.');
       return;
@@ -261,13 +338,23 @@ export function IncomePage() {
 
     setIsLoading(true);
 
+    let entriesQuery = supabase
+      .from('income_entries')
+      .select('id, source_id, entry_date, currency_code, amount_original, fx_rate_to_mxn, amount_mxn, notes, income_sources(name)')
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+    if (activeDateRange.start) {
+      entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);
+    }
+
+    if (activeDateRange.end) {
+      entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
+    }
+
     const [{ data: sourceData, error: sourceError }, { data: entryData, error: entryError }] = await Promise.all([
       supabase.from('income_sources').select('id, name').order('name', { ascending: true }),
-      supabase
-        .from('income_entries')
-        .select('id, source_id, entry_date, currency_code, amount_original, fx_rate_to_mxn, amount_mxn, notes, income_sources(name)')
-        .order('entry_date', { ascending: false })
-        .limit(24),
+      entriesQuery,
     ]);
 
     if (sourceError) {
@@ -294,11 +381,15 @@ export function IncomePage() {
     setRows(loadedRows);
     setFeedback(nextSources.length > 0 ? null : 'Primero crea al menos una fuente de ingreso en Catalogos.');
     setIsLoading(false);
-  }, []);
+  }, [activeDateRange]);
 
   useEffect(() => {
+    if (!activeDateRange) {
+      return;
+    }
+
     void loadIncomeData();
-  }, [loadIncomeData]);
+  }, [activeDateRange, loadIncomeData]);
 
   function commitActiveEditorAndRun(action: () => void) {
     const activeElement = document.activeElement;
@@ -623,6 +714,7 @@ export function IncomePage() {
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage;
+  const persistedRowCount = rows.filter((row) => !row.isDraft).length;
   const mobileListRows = useMemo(() => {
     if (!selectedMobileRow) {
       return rows;
@@ -638,6 +730,16 @@ export function IncomePage() {
     return [...prioritizedRows, ...remainingRows];
   }, [rows, selectedMobileRow]);
   const visibleMobileRows = showAllMobileRows ? mobileListRows : mobileListRows.slice(0, MOBILE_VISIBLE_ROW_COUNT);
+
+  function handleSelectDateFilter(nextMode: IncomeDateFilterMode) {
+    if (nextMode === 'custom') {
+      setCustomDateRange((currentRange) =>
+        currentRange.start && currentRange.end ? currentRange : getDefaultCustomDateRange(),
+      );
+    }
+
+    setDateFilterMode(nextMode);
+  }
 
   function handleRowsChange(nextRows: IncomeGridRow[], data: { indexes: number[] }) {
     commitIncomeRows(nextRows, data.indexes[0] ?? null);
@@ -666,6 +768,75 @@ export function IncomePage() {
   return (
     <div className="page">
       <section className="card finance-panel">
+        <div className="income-toolbar">
+          <div className="income-toolbar__controls">
+            <div className="income-period-filter" role="group" aria-label="Filtrar ingresos por fecha">
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('all')}
+                disabled={isLoading}
+              >
+                Todo
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('month')}
+                disabled={isLoading}
+              >
+                Este mes
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('year')}
+                disabled={isLoading}
+              >
+                Este año
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'custom' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('custom')}
+                disabled={isLoading}
+              >
+                Rango
+              </button>
+            </div>
+
+            {dateFilterMode === 'custom' ? (
+              <div className="income-date-range" aria-label="Rango personalizado de fechas">
+                <label className="income-date-range__field">
+                  <span>De</span>
+                  <AppDatePicker
+                    ariaLabel="Fecha inicial"
+                    className="income-date-range__input"
+                    value={customDateRange.start}
+                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, start: value }))}
+                    placeholder={ISO_DATE_PLACEHOLDER}
+                    max={customDateRange.end || undefined}
+                  />
+                </label>
+                <label className="income-date-range__field">
+                  <span>A</span>
+                  <AppDatePicker
+                    ariaLabel="Fecha final"
+                    className="income-date-range__input"
+                    value={customDateRange.end}
+                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, end: value }))}
+                    placeholder={ISO_DATE_PLACEHOLDER}
+                    min={customDateRange.start || undefined}
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="income-toolbar__meta">{isLoading ? 'Cargando...' : `${persistedRowCount} ingresos`}</div>
+        </div>
+
+        {dateFilterError ? <div className="inline-hint inline-hint--error">{dateFilterError}</div> : null}
         {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
 
         {isMobile ? (
