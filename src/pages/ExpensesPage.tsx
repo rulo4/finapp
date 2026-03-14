@@ -544,7 +544,8 @@ export function ExpensesPage() {
       .select(
         'id, entry_date, concept, quantity, unit_of_measure_id, unit_of_measure, subtotal_original, total_amount_mxn, currency_code, fx_rate_to_mxn, category_id, payment_instrument_id, store_id, notes, expense_categories(name), payment_instruments(name), stores(name)',
       )
-      .order('entry_date', { ascending: false });
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (activeDateRange.start) {
       entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);

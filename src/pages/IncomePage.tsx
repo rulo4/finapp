@@ -341,7 +341,8 @@ export function IncomePage() {
     let entriesQuery = supabase
       .from('income_entries')
       .select('id, source_id, entry_date, currency_code, amount_original, fx_rate_to_mxn, amount_mxn, notes, income_sources(name)')
-      .order('entry_date', { ascending: false });
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
 
     if (activeDateRange.start) {
       entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);
