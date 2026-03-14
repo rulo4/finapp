@@ -75,6 +75,13 @@ type ExpenseGridRow = {
   notes: string;
 };
 
+type ExpenseDateFilterMode = 'all' | 'month' | 'year' | 'custom';
+
+type ExpenseDateRange = {
+  start: string;
+  end: string;
+};
+
 function pickRelation(relation: { name: string } | { name: string }[] | null) {
   return Array.isArray(relation) ? relation[0] ?? null : relation;
 }
@@ -90,6 +97,25 @@ function normalizeExpenseEntry(row: ExpenseEntryRow): ExpenseEntry {
 
 function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
+}
+
+function getStartOfCurrentMonth() {
+  const today = new Date();
+
+  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+}
+
+function getStartOfCurrentYear() {
+  const today = new Date();
+
+  return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+}
+
+function getDefaultCustomDateRange(): ExpenseDateRange {
+  return {
+    start: getStartOfCurrentMonth(),
+    end: getTodayDate(),
+  };
 }
 
 const ACTION_COLUMN_WIDTH = 64;
@@ -428,6 +454,8 @@ export function ExpensesPage() {
   const [rows, setRows] = useState<ExpenseGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  const [dateFilterMode, setDateFilterMode] = useState<ExpenseDateFilterMode>('month');
+  const [customDateRange, setCustomDateRange] = useState<ExpenseDateRange>(() => getDefaultCustomDateRange());
   const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
   const [showAllMobileRows, setShowAllMobileRows] = useState(false);
   const [calculatorExpression, setCalculatorExpression] = useState('');
@@ -454,7 +482,56 @@ export function ExpensesPage() {
     }
   }, [rows, selectedRowId]);
 
+  const dateFilterError = useMemo(() => {
+    if (dateFilterMode !== 'custom') {
+      return null;
+    }
+
+    if (!customDateRange.start || !customDateRange.end) {
+      return 'Completa la fecha inicial y final para aplicar el rango.';
+    }
+
+    if (customDateRange.start > customDateRange.end) {
+      return 'La fecha inicial no puede ser posterior a la fecha final.';
+    }
+
+    return null;
+  }, [customDateRange.end, customDateRange.start, dateFilterMode]);
+
+  const activeDateRange = useMemo(() => {
+    if (dateFilterMode === 'month') {
+      return {
+        start: getStartOfCurrentMonth(),
+        end: getTodayDate(),
+      };
+    }
+
+    if (dateFilterMode === 'year') {
+      return {
+        start: getStartOfCurrentYear(),
+        end: getTodayDate(),
+      };
+    }
+
+    if (dateFilterMode === 'custom') {
+      if (dateFilterError) {
+        return null;
+      }
+
+      return customDateRange;
+    }
+
+    return {
+      start: '',
+      end: '',
+    };
+  }, [customDateRange, dateFilterError, dateFilterMode]);
+
   const loadExpenseData = useCallback(async () => {
+    if (!activeDateRange) {
+      return;
+    }
+
     if (!supabase || !isSupabaseConfigured()) {
       setFeedback('Supabase no esta configurado para este entorno.');
       return;
@@ -462,17 +539,27 @@ export function ExpensesPage() {
 
     setIsLoading(true);
 
+    let entriesQuery = supabase
+      .from('expense_entries')
+      .select(
+        'id, entry_date, concept, quantity, unit_of_measure_id, unit_of_measure, subtotal_original, total_amount_mxn, currency_code, fx_rate_to_mxn, category_id, payment_instrument_id, store_id, notes, expense_categories(name), payment_instruments(name), stores(name)',
+      )
+      .order('entry_date', { ascending: false });
+
+    if (activeDateRange.start) {
+      entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);
+    }
+
+    if (activeDateRange.end) {
+      entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
+    }
+
     const [categoriesResult, instrumentsResult, storesResult, unitsResult, entriesResult] = await Promise.all([
       supabase.from('expense_categories').select('id, name').order('name', { ascending: true }),
       supabase.from('payment_instruments').select('id, name').order('name', { ascending: true }),
       supabase.from('stores').select('id, name').order('name', { ascending: true }),
       supabase.from('unit_of_measures').select('id, name').order('name', { ascending: true }),
-      supabase
-        .from('expense_entries')
-        .select(
-          'id, entry_date, concept, quantity, unit_of_measure_id, unit_of_measure, subtotal_original, total_amount_mxn, currency_code, fx_rate_to_mxn, category_id, payment_instrument_id, store_id, notes, expense_categories(name), payment_instruments(name), stores(name)',
-        )
-        .order('entry_date', { ascending: false }),
+      entriesQuery,
     ]);
 
     if (categoriesResult.error) {
@@ -517,11 +604,15 @@ export function ExpensesPage() {
     setRows(loadedRows);
     setFeedback(null);
     setIsLoading(false);
-  }, []);
+  }, [activeDateRange]);
 
   useEffect(() => {
+    if (!activeDateRange) {
+      return;
+    }
+
     void loadExpenseData();
-  }, [loadExpenseData]);
+  }, [activeDateRange, loadExpenseData]);
 
   function commitActiveEditorAndRun(action: () => void) {
     const activeElement = document.activeElement;
@@ -905,6 +996,7 @@ export function ExpensesPage() {
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage ?? feedback;
+  const persistedRowCount = rows.filter((row) => !row.isDraft).length;
   const mobileListRows = useMemo(() => {
     if (!selectedMobileRow) {
       return rows;
@@ -955,6 +1047,16 @@ export function ExpensesPage() {
     }
   }, [calculatorResult.displayValue, calculatorResult.numericValue]);
 
+  function handleSelectDateFilter(nextMode: ExpenseDateFilterMode) {
+    if (nextMode === 'custom') {
+      setCustomDateRange((currentRange) =>
+        currentRange.start && currentRange.end ? currentRange : getDefaultCustomDateRange(),
+      );
+    }
+
+    setDateFilterMode(nextMode);
+  }
+
   function handleRowsChange(nextRows: ExpenseGridRow[], data: { indexes: number[] }) {
     commitExpenseRows(nextRows, data.indexes[0] ?? null);
   }
@@ -982,41 +1084,112 @@ export function ExpensesPage() {
   return (
     <div className="page">
       <section className="card finance-panel">
-        <div className="mini-calculator" aria-label="Calculadora rapida de subtotal">
-          <input
-            type="text"
-            className="mini-calculator__input"
-            value={calculatorExpression}
-            onChange={(event) => {
-              setCalculatorExpression(event.target.value);
-              setCalculatorCopyState('idle');
-            }}
-            placeholder="120+35/2"
-            aria-label="Expresion aritmetica"
-            spellCheck={false}
-          />
-          <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
-            {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
-          </span>
-          <button
-            type="button"
-            className="mini-calculator__copy"
-            aria-label="Copiar resultado"
-            title={
-              calculatorCopyState === 'copied'
-                ? 'Resultado copiado'
-                : calculatorCopyState === 'error'
-                  ? 'No se pudo copiar el resultado'
-                  : 'Copiar resultado'
-            }
-            onClick={() => {
-              void handleCopyCalculatorResult();
-            }}
-            disabled={calculatorResult.numericValue == null}
-          >
-            <FontAwesomeIcon icon={faCopy} />
-          </button>
+        <div className="income-toolbar">
+          <div className="income-toolbar__controls">
+            <div className="income-period-filter" role="group" aria-label="Filtrar egresos por fecha">
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('all')}
+                disabled={isLoading}
+              >
+                Todo
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('month')}
+                disabled={isLoading}
+              >
+                Este mes
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('year')}
+                disabled={isLoading}
+              >
+                Este año
+              </button>
+              <button
+                type="button"
+                className={`income-period-filter__button ${dateFilterMode === 'custom' ? 'income-period-filter__button--active' : ''}`}
+                onClick={() => handleSelectDateFilter('custom')}
+                disabled={isLoading}
+              >
+                Rango
+              </button>
+            </div>
+
+            {dateFilterMode === 'custom' ? (
+              <div className="income-date-range" aria-label="Rango personalizado de fechas para egresos">
+                <label className="income-date-range__field">
+                  <span>De</span>
+                  <AppDatePicker
+                    ariaLabel="Fecha inicial"
+                    className="income-date-range__input"
+                    value={customDateRange.start}
+                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, start: value }))}
+                    placeholder={ISO_DATE_PLACEHOLDER}
+                    max={customDateRange.end || undefined}
+                  />
+                </label>
+                <label className="income-date-range__field">
+                  <span>A</span>
+                  <AppDatePicker
+                    ariaLabel="Fecha final"
+                    className="income-date-range__input"
+                    value={customDateRange.end}
+                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, end: value }))}
+                    placeholder={ISO_DATE_PLACEHOLDER}
+                    min={customDateRange.start || undefined}
+                  />
+                </label>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="income-toolbar__aside">
+            <div className="mini-calculator mini-calculator--right" aria-label="Calculadora rapida de subtotal">
+              <input
+                type="text"
+                className="mini-calculator__input"
+                value={calculatorExpression}
+                onChange={(event) => {
+                  setCalculatorExpression(event.target.value);
+                  setCalculatorCopyState('idle');
+                }}
+                placeholder="120+35/2"
+                aria-label="Expresion aritmetica"
+                spellCheck={false}
+              />
+              <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
+                {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
+              </span>
+              <button
+                type="button"
+                className="mini-calculator__copy"
+                aria-label="Copiar resultado"
+                title={
+                  calculatorCopyState === 'copied'
+                    ? 'Resultado copiado'
+                    : calculatorCopyState === 'error'
+                      ? 'No se pudo copiar el resultado'
+                      : 'Copiar resultado'
+                }
+                onClick={() => {
+                  void handleCopyCalculatorResult();
+                }}
+                disabled={calculatorResult.numericValue == null}
+              >
+                <FontAwesomeIcon icon={faCopy} />
+              </button>
+            </div>
+            <div className="income-toolbar__meta">{isLoading ? 'Cargando...' : `${persistedRowCount} egresos`}</div>
+          </div>
         </div>
+
+        {dateFilterError ? <div className="inline-hint inline-hint--error">{dateFilterError}</div> : null}
 
         {isMobile ? (
           <div className="mobile-expense">
