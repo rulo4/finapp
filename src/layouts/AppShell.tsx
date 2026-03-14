@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faAnglesLeft, faAnglesRight, faBars } from '@fortawesome/free-solid-svg-icons';
+import { faAnglesLeft, faAnglesRight, faBars, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { navigationItems } from '../config/navigation';
@@ -127,8 +127,14 @@ export function AppShell() {
             <div className="topbar__session">
               <strong>{user?.email ?? 'Usuario autenticado'}</strong>
             </div>
-            <button type="button" className="topbar__button" onClick={() => void signOut()}>
-              Cerrar sesion
+            <button
+              type="button"
+              className="topbar__button topbar__button--icon"
+              onClick={() => void signOut()}
+              aria-label="Cerrar sesion"
+              title="Cerrar sesion"
+            >
+              <FontAwesomeIcon icon={faRightFromBracket} />
             </button>
           </div>
         </header>

@@ -262,6 +262,9 @@ textarea {
 }
 
 .topbar__button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px 12px;
   border: 1px solid #cbd5e1;
   border-radius: 10px;
@@ -273,6 +276,12 @@ textarea {
 
 .topbar__button:hover {
   background: #f8fafc;
+}
+
+.topbar__button--icon {
+  width: 40px;
+  height: 40px;
+  padding: 0;
 }
 
 .content {
@@ -1169,26 +1178,6 @@ textarea {
   min-width: 0;
 }
 
-.income-toolbar__meta {
-  padding: 7px 10px;
-  border: 1px solid #e5e7eb;
-  border-radius: 999px;
-  background: #f8fafc;
-  color: #475569;
-  font-size: 0.85rem;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.income-toolbar__aside {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-inline-start: auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
 .income-period-filter {
   display: inline-flex;
   align-items: center;
@@ -1366,8 +1355,28 @@ textarea {
   justify-content: start;
 }
 
-.mini-calculator--right {
-  justify-content: end;
+.expense-helper-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+}
+
+.expense-helper-panel__header {
+  display: grid;
+  gap: 2px;
+}
+
+.expense-helper-panel__header strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.expense-helper-panel__header span {
+  color: #64748b;
+  font-size: 0.85rem;
 }
 
 .mini-calculator__input {
@@ -1576,11 +1585,6 @@ textarea {
     align-items: stretch;
   }
 
-  .income-toolbar__aside,
-  .income-toolbar__meta {
-    align-self: flex-start;
-  }
-
   .catalog-layout {
     grid-template-columns: 1fr;
   }
@@ -1712,7 +1716,6 @@ textarea {
 
   .income-toolbar,
   .income-toolbar__controls,
-  .income-toolbar__aside,
   .income-date-range {
     display: grid;
     width: 100%;
@@ -1734,14 +1737,6 @@ textarea {
 
   .income-date-range__field .react-datepicker-wrapper {
     width: 100%;
-  }
-
-  .income-toolbar__meta {
-    justify-self: start;
-  }
-
-  .mini-calculator--right {
-    justify-content: start;
   }
 
   .mobile-income__picker-header,
