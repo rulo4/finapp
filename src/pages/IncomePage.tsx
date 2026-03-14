@@ -714,7 +714,6 @@ export function IncomePage() {
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage;
-  const persistedRowCount = rows.filter((row) => !row.isDraft).length;
   const mobileListRows = useMemo(() => {
     if (!selectedMobileRow) {
       return rows;
@@ -833,7 +832,6 @@ export function IncomePage() {
             ) : null}
           </div>
 
-          <div className="income-toolbar__meta">{isLoading ? 'Cargando...' : `${persistedRowCount} ingresos`}</div>
         </div>
 
         {dateFilterError ? <div className="inline-hint inline-hint--error">{dateFilterError}</div> : null}
@@ -842,11 +840,6 @@ export function IncomePage() {
         {isMobile ? (
           <div className="mobile-income">
             <div className="mobile-income__picker">
-              <div className="mobile-income__picker-header">
-                <span>
-                  {visibleMobileRows.length} de {rows.length}
-                </span>
-              </div>
               <div className="mobile-income__picker-list">
                 {visibleMobileRows.map((row) => {
                   const sourceLabel = row.isDraft ? 'Nuevo' : (sourceLabelById.get(row.sourceId) ?? 'Sin fuente');

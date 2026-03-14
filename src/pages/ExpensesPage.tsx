@@ -997,7 +997,6 @@ export function ExpensesPage() {
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
   const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage ?? feedback;
-  const persistedRowCount = rows.filter((row) => !row.isDraft).length;
   const mobileListRows = useMemo(() => {
     if (!selectedMobileRow) {
       return rows;
@@ -1150,44 +1149,6 @@ export function ExpensesPage() {
             ) : null}
           </div>
 
-          <div className="income-toolbar__aside">
-            <div className="mini-calculator mini-calculator--right" aria-label="Calculadora rapida de subtotal">
-              <input
-                type="text"
-                className="mini-calculator__input"
-                value={calculatorExpression}
-                onChange={(event) => {
-                  setCalculatorExpression(event.target.value);
-                  setCalculatorCopyState('idle');
-                }}
-                placeholder="120+35/2"
-                aria-label="Expresion aritmetica"
-                spellCheck={false}
-              />
-              <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
-                {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
-              </span>
-              <button
-                type="button"
-                className="mini-calculator__copy"
-                aria-label="Copiar resultado"
-                title={
-                  calculatorCopyState === 'copied'
-                    ? 'Resultado copiado'
-                    : calculatorCopyState === 'error'
-                      ? 'No se pudo copiar el resultado'
-                      : 'Copiar resultado'
-                }
-                onClick={() => {
-                  void handleCopyCalculatorResult();
-                }}
-                disabled={calculatorResult.numericValue == null}
-              >
-                <FontAwesomeIcon icon={faCopy} />
-              </button>
-            </div>
-            <div className="income-toolbar__meta">{isLoading ? 'Cargando...' : `${persistedRowCount} egresos`}</div>
-          </div>
         </div>
 
         {dateFilterError ? <div className="inline-hint inline-hint--error">{dateFilterError}</div> : null}
@@ -1195,11 +1156,6 @@ export function ExpensesPage() {
         {isMobile ? (
           <div className="mobile-expense">
             <div className="mobile-expense__picker">
-              <div className="mobile-expense__picker-header">
-                <span>
-                  {visibleMobileRows.length} de {rows.length}
-                </span>
-              </div>
               <div className="mobile-expense__picker-list">
                 {visibleMobileRows.map((row) => {
                   const conceptLabel = row.isDraft ? 'Nuevo' : row.concept || 'Sin concepto';
@@ -1241,42 +1197,6 @@ export function ExpensesPage() {
                   <span className={`status-pill status-pill--${selectedMobileRow.status === 'error' ? 'checking' : 'ok'}`}>
                     {getExpenseStatusLabel(selectedMobileRow)}
                   </span>
-                </div>
-
-                <div className="mini-calculator" aria-label="Calculadora rapida de subtotal">
-                  <input
-                    type="text"
-                    className="mini-calculator__input"
-                    value={calculatorExpression}
-                    onChange={(event) => {
-                      setCalculatorExpression(event.target.value);
-                      setCalculatorCopyState('idle');
-                    }}
-                    placeholder="120+35/2"
-                    aria-label="Expresion aritmetica"
-                    spellCheck={false}
-                  />
-                  <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
-                    {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
-                  </span>
-                  <button
-                    type="button"
-                    className="mini-calculator__copy"
-                    aria-label="Copiar resultado"
-                    title={
-                      calculatorCopyState === 'copied'
-                        ? 'Resultado copiado'
-                        : calculatorCopyState === 'error'
-                          ? 'No se pudo copiar el resultado'
-                          : 'Copiar resultado'
-                    }
-                    onClick={() => {
-                      void handleCopyCalculatorResult();
-                    }}
-                    disabled={calculatorResult.numericValue == null}
-                  >
-                    <FontAwesomeIcon icon={faCopy} />
-                  </button>
                 </div>
 
                 {mobileErrorMessage ? <div className="feedback-banner feedback-banner--error">{mobileErrorMessage}</div> : null}
@@ -1486,6 +1406,44 @@ export function ExpensesPage() {
             </div>
           </>
         )}
+
+        <div className="expense-helper-panel" aria-label="Calculadora rápida de subtotal">
+          <div className="mini-calculator">
+            <input
+              type="text"
+              className="mini-calculator__input"
+              value={calculatorExpression}
+              onChange={(event) => {
+                setCalculatorExpression(event.target.value);
+                setCalculatorCopyState('idle');
+              }}
+              placeholder="calculadora"
+              aria-label="Expresion aritmetica"
+              spellCheck={false}
+            />
+            <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
+              {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
+            </span>
+            <button
+              type="button"
+              className="mini-calculator__copy"
+              aria-label="Copiar resultado"
+              title={
+                calculatorCopyState === 'copied'
+                  ? 'Resultado copiado'
+                  : calculatorCopyState === 'error'
+                    ? 'No se pudo copiar el resultado'
+                    : 'Copiar resultado'
+              }
+              onClick={() => {
+                void handleCopyCalculatorResult();
+              }}
+              disabled={calculatorResult.numericValue == null}
+            >
+              <FontAwesomeIcon icon={faCopy} />
+            </button>
+          </div>
+        </div>
 
       </section>
     </div>
