@@ -3,9 +3,13 @@ dist/
 .vite/
 .env
 .env.local
+.env.remote
 supabase/.temp/
 .DS_Store
 *.log
 *.tsbuildinfo
 supabase-local.log
 finapp-public-user-import.sql
+imports/
+scripts/
+expenses_to_import.tsv

@@ -110,12 +110,19 @@ La migracion base actual vive en `supabase/migrations/001_init.sql` e incluye ca
 
 ## Scripts
 - `npm run dev`
+- `npm run dev:remote`
 - `npm run build`
 - `npm run preview`
 - `npm run supabase:start`
 - `npm run supabase:status`
 - `npm run supabase:stop`
 - `npm run supabase:reset`
+
+## Probar Contra Supabase Remoto
+- crea `.env.remote` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` del proyecto remoto
+- ejecuta `npm run dev:remote`
+- Vite cargara `.env.remote` automaticamente porque el script usa `--mode remote`
+- `.env.local` se mantiene intacto para seguir usando el entorno local con `npm run dev`
 
 ## Troubleshooting rapido
 - Si `npm run dev` levanta pero no puedes autenticarte, revisa primero `.env.local`.
