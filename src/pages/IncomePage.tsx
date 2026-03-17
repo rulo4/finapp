@@ -71,6 +71,18 @@ function getStartOfCurrentYear() {
   return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
 }
 
+function isDateWithinRange(date: string, range: { start: string; end: string }) {
+  if (range.start && date < range.start) {
+    return false;
+  }
+
+  if (range.end && date > range.end) {
+    return false;
+  }
+
+  return true;
+}
+
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
     return '';
@@ -423,7 +435,7 @@ export function IncomePage() {
       };
 
       const result = row.isDraft
-        ? await supabase.from('income_entries').insert(payload)
+        ? await supabase.from('income_entries').insert(payload).select('id').single()
         : await supabase.from('income_entries').update(payload).eq('id', row.persistedId);
 
       if (result.error) {
@@ -438,17 +450,71 @@ export function IncomePage() {
         return;
       }
 
+      const persistedId = row.isDraft ? result.data?.id ?? null : row.persistedId;
+
+      if (!persistedId) {
+        updateIncomeRow(rowId, {
+          status: 'error',
+          errorMessage: 'No se recibió el identificador del ingreso guardado.',
+        });
+        setFeedback('No se recibió el identificador del ingreso guardado.');
+        return;
+      }
+
+      const savedRow: IncomeGridRow = {
+        ...normalizeIncomeGridRow(row),
+        persistedId,
+        isDraft: false,
+        status: 'saved',
+        errorMessage: null,
+      };
+
+      if (isDateWithinRange(savedRow.entryDate, activeDateRange)) {
+        persistedRowsRef.current.set(rowId, savedRow);
+      } else {
+        persistedRowsRef.current.delete(rowId);
+      }
+
+      setRows((currentRows) => {
+        let nextRows: IncomeGridRow[];
+        const currentRowIndex = currentRows.findIndex((candidate) => candidate.id === rowId);
+
+        if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
+          if (row.isDraft && currentRowIndex >= 0) {
+            nextRows = currentRows.map((candidate, index) =>
+              index === currentRowIndex ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
+            );
+          } else {
+            nextRows = currentRows.filter((candidate) => candidate.id !== rowId);
+          }
+        } else if (row.isDraft) {
+          nextRows = currentRows.flatMap((candidate, index) => {
+            if (index !== currentRowIndex) {
+              return candidate;
+            }
+
+            return [savedRow, createDraftIncomeRow(sources[0]?.id ?? '')];
+          });
+        } else {
+          nextRows = currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate));
+        }
+
+        rowsRef.current = nextRows;
+        return nextRows;
+      });
+
       setFeedback(row.isDraft ? 'Ingreso guardado correctamente.' : 'Ingreso actualizado correctamente.');
-      await loadIncomeData();
     },
-    [loadIncomeData],
+    [activeDateRange, sources],
   );
 
   const handleDeleteRow = useCallback(
     async (row: IncomeGridRow) => {
       if (row.isDraft) {
         setRows((currentRows) => {
-          const nextRows = [createDraftIncomeRow(sources[0]?.id ?? ''), ...currentRows.filter((candidate) => !candidate.isDraft)];
+          const nextRows = currentRows.map((candidate) =>
+            candidate.id === row.id ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
+          );
           rowsRef.current = nextRows;
           return nextRows;
         });
@@ -472,16 +538,23 @@ export function IncomePage() {
         return;
       }
 
+      persistedRowsRef.current.delete(row.id);
+      setRows((currentRows) => {
+        const nextRows = currentRows.filter((candidate) => candidate.id !== row.id);
+        rowsRef.current = nextRows;
+        return nextRows;
+      });
       setFeedback('Ingreso eliminado correctamente.');
-      await loadIncomeData();
     },
-    [loadIncomeData, sources],
+    [sources],
   );
 
   const handleRevertRow = useCallback((row: IncomeGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
-        const nextRows = [createDraftIncomeRow(sources[0]?.id ?? ''), ...currentRows.filter((candidate) => !candidate.isDraft)];
+        const nextRows = currentRows.map((candidate) =>
+          candidate.id === row.id ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
+        );
         rowsRef.current = nextRows;
         return nextRows;
       });
@@ -521,7 +594,7 @@ export function IncomePage() {
       {
         key: 'actions',
         name: '',
-        width: 78,
+        width: 72,
         frozen: true,
         editable: false,
         renderCell: ({ row }) => {

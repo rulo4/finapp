@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalendarDay, faCamera, faCreditCard, faEye, faReceipt, faShop, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faCamera, faEye, faTrash, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { DataGrid, type Column } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 import type { TicketRecord, TicketStatus } from '../features/tickets/types';
 
-type TicketCard = TicketRecord & {
+type TicketGridRow = TicketRecord & {
   previewUrl: string | null;
+  purchaseDateLabel: string;
+  storeLabel: string;
+  paymentLabel: string;
+  expenseCount: number;
 };
+
+const GRID_ROW_HEIGHT = 64;
+const ACTION_COLUMN_WIDTH = 72;
+const THUMBNAIL_COLUMN_WIDTH = 92;
 
 function getStatusLabel(status: TicketStatus) {
   switch (status) {
@@ -43,17 +52,17 @@ function formatPurchaseDate(value: string) {
   }).format(new Date(`${value}T00:00:00`));
 }
 
-function getTicketPurchaseDate(ticket: TicketCard) {
+function getTicketPurchaseDate(ticket: TicketRecord) {
   const purchaseDate = ticket.parsed_expenses?.find((expense) => expense.entry_date)?.entry_date;
 
   return purchaseDate ? formatPurchaseDate(purchaseDate) : 'Sin fecha';
 }
 
-function getTicketStore(ticket: TicketCard) {
+function getTicketStore(ticket: TicketRecord) {
   return ticket.parsed_expenses?.find((expense) => expense.suggested_store_text?.trim())?.suggested_store_text?.trim() ?? 'Sin tienda';
 }
 
-function getTicketPaymentInstrument(ticket: TicketCard) {
+function getTicketPaymentInstrument(ticket: TicketRecord) {
   return (
     ticket.parsed_expenses
       ?.find((expense) => expense.suggested_payment_instrument_text?.trim())
@@ -66,10 +75,33 @@ function isMissingStorageObjectMessage(message: string) {
 }
 
 export function TicketsPage() {
-  const [tickets, setTickets] = useState<TicketCard[]>([]);
+  const [tickets, setTickets] = useState<TicketGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [deletingTicketId, setDeletingTicketId] = useState<string | null>(null);
+  const [viewerImageUrl, setViewerImageUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!viewerImageUrl) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setViewerImageUrl(null);
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [viewerImageUrl]);
 
   async function loadTickets() {
     const activeSupabase = supabase;
@@ -95,7 +127,7 @@ export function TicketsPage() {
       return;
     }
 
-    const records = ((data ?? []) as TicketRecord[]);
+    const records = (data ?? []) as TicketRecord[];
     const signedUrls = await Promise.all(
       records.map(async (ticket) => {
         const { data: signedUrlData } = await activeSupabase.storage.from('tickets').createSignedUrl(ticket.storage_path, 3600);
@@ -108,7 +140,16 @@ export function TicketsPage() {
     );
     const previewById = new Map(signedUrls.map((entry) => [entry.id, entry.previewUrl]));
 
-    setTickets(records.map((ticket) => ({ ...ticket, previewUrl: previewById.get(ticket.id) ?? null })));
+    setTickets(
+      records.map((ticket) => ({
+        ...ticket,
+        previewUrl: previewById.get(ticket.id) ?? null,
+        purchaseDateLabel: getTicketPurchaseDate(ticket),
+        storeLabel: getTicketStore(ticket),
+        paymentLabel: getTicketPaymentInstrument(ticket),
+        expenseCount: ticket.parsed_expenses?.length ?? 0,
+      })),
+    );
     setIsLoading(false);
   }
 
@@ -116,7 +157,7 @@ export function TicketsPage() {
     void loadTickets();
   }, []);
 
-  async function handleDeleteTicket(ticket: TicketCard) {
+  async function handleDeleteTicket(ticket: TicketGridRow) {
     if (!supabase) {
       setFeedback('Supabase no esta disponible para eliminar tickets.');
       return;
@@ -166,6 +207,104 @@ export function TicketsPage() {
   const pendingSaveCount = useMemo(() => tickets.filter((ticket) => ticket.status === 'processed').length, [tickets]);
   const savedCount = useMemo(() => tickets.filter((ticket) => ticket.status === 'saved').length, [tickets]);
 
+  const columns = useMemo<readonly Column<TicketGridRow>[]>(
+    () => [
+      {
+        key: 'actions',
+        name: '',
+        width: ACTION_COLUMN_WIDTH,
+        frozen: true,
+        editable: false,
+        renderCell: ({ row }) => {
+          const actionCount = row.status === 'saved' ? 1 : 2;
+
+          return (
+            <div className={`grid-actions ticket-grid-actions grid-actions--${actionCount}`}>
+              <Link
+                to={`/tickets/scan?ticket=${row.id}`}
+                className="grid-action grid-action--ticket"
+                aria-label={row.status === 'saved' ? 'Ver ticket' : row.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
+                title={row.status === 'saved' ? 'Ver ticket' : row.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
+                onClick={(event) => {
+                  event.stopPropagation();
+                }}
+              >
+                <FontAwesomeIcon icon={faEye} />
+              </Link>
+              {row.status !== 'saved' ? (
+                <button
+                  type="button"
+                  className="grid-action grid-action--delete"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    void handleDeleteTicket(row);
+                  }}
+                  disabled={deletingTicketId === row.id}
+                  aria-label={deletingTicketId === row.id ? 'Eliminando ticket' : 'Eliminar ticket'}
+                  title={deletingTicketId === row.id ? 'Eliminando ticket' : 'Eliminar ticket'}
+                >
+                  <FontAwesomeIcon icon={faTrash} />
+                </button>
+              ) : null}
+            </div>
+          );
+        },
+      },
+      {
+        key: 'preview',
+        name: 'Img',
+        width: THUMBNAIL_COLUMN_WIDTH,
+        editable: false,
+        renderCell: ({ row }) =>
+          row.previewUrl ? (
+            <button
+              type="button"
+              className="ticket-grid-thumb__button"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                setViewerImageUrl(row.previewUrl);
+              }}
+              aria-label="Ver imagen del ticket"
+              title="Ver imagen del ticket"
+            >
+              <img src={row.previewUrl} alt="Miniatura del ticket" className="ticket-grid-thumb__image" />
+            </button>
+          ) : (
+            <div className="ticket-grid-thumb__placeholder">Sin img</div>
+          ),
+      },
+      {
+        key: 'status',
+        name: 'Estado',
+        width: 140,
+        renderCell: ({ row }) => <span className={`ticket-grid-status ticket-grid-status--${getStatusTone(row.status)}`}>{getStatusLabel(row.status)}</span>,
+      },
+      {
+        key: 'purchaseDateLabel',
+        name: 'Fecha compra',
+        width: 132,
+      },
+      {
+        key: 'storeLabel',
+        name: 'Tienda',
+        width: 180,
+      },
+      {
+        key: 'paymentLabel',
+        name: 'Pago',
+        width: 180,
+      },
+      {
+        key: 'expenseCount',
+        name: 'Gastos',
+        width: 84,
+      },
+    ],
+    [deletingTicketId],
+  );
+
   return (
     <div className="page">
       <section className="card tickets-hero">
@@ -186,80 +325,53 @@ export function TicketsPage() {
 
       {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
 
-      <section className="tickets-list">
+      <section className="card tickets-table-card">
         {isLoading ? (
-          <article className="card">
-            <p className="card__text">Cargando historial de tickets...</p>
-          </article>
+          <p className="card__text">Cargando historial de tickets...</p>
         ) : tickets.length === 0 ? (
-          <article className="card">
-            <p className="card__text">Sin tickets.</p>
-          </article>
+          <p className="card__text">Sin tickets.</p>
         ) : (
-          tickets.map((ticket) => (
-            <article key={ticket.id} className="card ticket-card">
-              <div className="ticket-card__preview">
-                {ticket.previewUrl ? (
-                  <img src={ticket.previewUrl} alt="Preview del ticket" className="ticket-card__image" />
-                ) : (
-                  <div className="ticket-card__placeholder">Sin preview</div>
-                )}
-              </div>
-
-              <div className="ticket-card__content">
-                <div className="ticket-card__row">
-                  <div className="ticket-card__meta">
-                    <span className={`status-pill status-pill--${getStatusTone(ticket.status)}`}>{getStatusLabel(ticket.status)}</span>
-                  <span className="badge ticket-card__badge" title="Fecha de compra">
-                    <FontAwesomeIcon icon={faCalendarDay} />
-                    <span>{getTicketPurchaseDate(ticket)}</span>
-                  </span>
-                  <span className="badge ticket-card__badge" title="Tienda">
-                    <FontAwesomeIcon icon={faShop} />
-                    <span>{getTicketStore(ticket)}</span>
-                  </span>
-                  <span className="badge ticket-card__badge" title="Instrumento de pago">
-                    <FontAwesomeIcon icon={faCreditCard} />
-                    <span>{getTicketPaymentInstrument(ticket)}</span>
-                  </span>
-                  <span className="badge ticket-card__badge" title="Gastos detectados">
-                    <FontAwesomeIcon icon={faReceipt} />
-                    <span>{ticket.parsed_expenses?.length ?? 0}</span>
-                  </span>
-                  </div>
-
-                  <div className="tickets-card__actions">
-                    <Link
-                      to={`/tickets/scan?ticket=${ticket.id}`}
-                      className="tickets-button tickets-button--icon"
-                      aria-label={ticket.status === 'saved' ? 'Ver ticket' : ticket.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
-                      title={ticket.status === 'saved' ? 'Ver ticket' : ticket.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
-                    >
-                      <FontAwesomeIcon icon={faEye} />
-                    </Link>
-                    {ticket.status !== 'saved' ? (
-                      <button
-                        type="button"
-                        className="tickets-button tickets-button--danger tickets-button--icon"
-                        onClick={() => {
-                          void handleDeleteTicket(ticket);
-                        }}
-                        disabled={deletingTicketId === ticket.id}
-                        aria-label={deletingTicketId === ticket.id ? 'Eliminando ticket' : 'Eliminar ticket'}
-                        title={deletingTicketId === ticket.id ? 'Eliminando ticket' : 'Eliminar ticket'}
-                      >
-                        <FontAwesomeIcon icon={faTrash} />
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-
-                {ticket.error_message ? <div className="feedback-banner feedback-banner--error">{ticket.error_message}</div> : null}
-              </div>
-            </article>
-          ))
+          <div className="grid-wrapper grid-wrapper--tall">
+            <DataGrid
+              columns={columns}
+              rows={tickets}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={30}
+              rowKeyGetter={(row) => row.id}
+              defaultColumnOptions={{ resizable: true }}
+              style={{ blockSize: 560 }}
+            />
+          </div>
         )}
       </section>
+
+      {viewerImageUrl ? (
+        <div
+          className="image-viewer"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Visor de ticket"
+          onClick={() => setViewerImageUrl(null)}
+        >
+          <div className="image-viewer__content" onClick={(event) => event.stopPropagation()}>
+            <button
+              type="button"
+              className="image-viewer__close"
+              onClick={() => setViewerImageUrl(null)}
+              aria-label="Cerrar visor"
+              title="Cerrar visor"
+            >
+              <FontAwesomeIcon icon={faXmark} />
+            </button>
+            <img
+              src={viewerImageUrl}
+              alt="Vista ampliada del ticket"
+              className="image-viewer__image"
+              onClick={() => setViewerImageUrl(null)}
+            />
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
