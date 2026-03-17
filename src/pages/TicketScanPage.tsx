@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faImage, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faImage, faPlus, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column } from 'react-data-grid';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppDatePicker } from '../features/shared/AppDatePicker';
 import { isIsoDateString } from '../features/shared/isoDate';
 import type { ParsedTicketExpense, TicketRecord, TicketStatus } from '../features/tickets/types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
@@ -31,6 +32,10 @@ type ReviewRow = {
 };
 
 const GRID_ROW_HEIGHT = 30;
+
+function getTodayDate() {
+  return new Date().toISOString().slice(0, 10);
+}
 
 function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -74,6 +79,26 @@ function toReviewRow(expense: ParsedTicketExpense): ReviewRow {
     fxRateToMxn: expense.currency_code === 'MXN' ? '1' : '',
     totalAmountMxn: '',
     notes: expense.notes ?? '',
+  });
+}
+
+function createEmptyReviewRow(defaults?: Partial<Pick<ReviewRow, 'entryDate' | 'paymentInstrumentId' | 'storeId' | 'currencyCode'>>) {
+  const currencyCode = defaults?.currencyCode ?? 'MXN';
+
+  return normalizeReviewRow({
+    id: createLocalId('ticket-row'),
+    entryDate: defaults?.entryDate ?? getTodayDate(),
+    concept: '',
+    quantity: '1',
+    unitOfMeasureId: '',
+    categoryId: '',
+    paymentInstrumentId: defaults?.paymentInstrumentId ?? '',
+    storeId: defaults?.storeId ?? '',
+    currencyCode,
+    subtotalOriginal: '0',
+    fxRateToMxn: currencyCode === 'MXN' ? '1' : '',
+    totalAmountMxn: '',
+    notes: '',
   });
 }
 
@@ -182,6 +207,28 @@ function validateReviewRow(row: ReviewRow) {
   }
 
   return null;
+}
+
+function getSharedFieldState(values: string[]) {
+  if (values.length === 0) {
+    return { value: '', isMixed: false };
+  }
+
+  const firstValue = values[0] ?? '';
+
+  return values.every((value) => value === firstValue)
+    ? { value: firstValue, isMixed: false }
+    : { value: '', isMixed: true };
+}
+
+function isErrorFeedback(message: string) {
+  const normalizedMessage = message.trim();
+
+  return (
+    /^(no\b|supabase\b|necesitas\b|primero\b|la fecha\b|la fila\b|el\b|la\b|selecciona\b|captura\b|este\b)/i.test(
+      normalizedMessage,
+    ) || /no se pudo/i.test(normalizedMessage)
+  );
 }
 
 export function TicketScanPage() {
@@ -346,8 +393,57 @@ export function TicketScanPage() {
 
     return paymentInstrumentId ? paymentNameById.get(paymentInstrumentId) ?? 'Sin pago' : 'Sin pago';
   }, [paymentNameById, rows]);
+  const ticketTotalLabel = useMemo(() => {
+    const totalAmount = rows.reduce((sum, row) => {
+      const rowTotal = Number(row.totalAmountMxn);
+
+      return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
+    }, 0);
+
+    return new Intl.NumberFormat('es-MX', {
+      style: 'currency',
+      currency: 'MXN',
+      maximumFractionDigits: 2,
+    }).format(totalAmount);
+  }, [rows]);
+  const sharedEntryDate = useMemo(() => getSharedFieldState(rows.map((row) => row.entryDate)), [rows]);
+  const sharedStoreId = useMemo(() => getSharedFieldState(rows.map((row) => row.storeId)), [rows]);
+  const sharedPaymentInstrumentId = useMemo(
+    () => getSharedFieldState(rows.map((row) => row.paymentInstrumentId)),
+    [rows],
+  );
+  const sharedStoreOptions = useMemo<readonly SelectOption[]>(
+    () => (sharedStoreId.isMixed ? [{ value: '', label: 'Mixta' }, ...storeOptions] : storeOptions),
+    [sharedStoreId.isMixed, storeOptions],
+  );
+  const sharedPaymentOptions = useMemo<readonly SelectOption[]>(
+    () => (sharedPaymentInstrumentId.isMixed ? [{ value: '', label: 'Mixto' }, ...paymentInstrumentOptions] : paymentInstrumentOptions),
+    [paymentInstrumentOptions, sharedPaymentInstrumentId.isMixed],
+  );
   const canSelectImage = !previewUrl && !currentTicketId && !isProcessing && !isSaving && !isCatalogsLoading;
   const canRetryProcessing = Boolean(currentStoragePath && currentTicketStatus === 'error' && !isProcessing && !isSaving);
+  const canAddProduct = Boolean(currentTicketId && !isProcessing && !isSaving && currentTicketStatus !== 'saved');
+
+  function applySharedField<K extends 'entryDate' | 'storeId' | 'paymentInstrumentId'>(field: K, value: ReviewRow[K]) {
+    setRows((currentRows) => currentRows.map((row) => ({ ...row, [field]: value })));
+  }
+
+  function handleAddProduct() {
+    const fallbackRow = rows[0];
+
+    setRows((currentRows) => [
+      ...currentRows,
+      createEmptyReviewRow({
+        entryDate: sharedEntryDate.isMixed ? fallbackRow?.entryDate ?? getTodayDate() : sharedEntryDate.value || getTodayDate(),
+        storeId: sharedStoreId.isMixed ? fallbackRow?.storeId ?? '' : sharedStoreId.value,
+        paymentInstrumentId: sharedPaymentInstrumentId.isMixed
+          ? fallbackRow?.paymentInstrumentId ?? ''
+          : sharedPaymentInstrumentId.value,
+        currencyCode: fallbackRow?.currencyCode ?? 'MXN',
+      }),
+    ]);
+    setFeedback('Producto añadido.');
+  }
 
   async function processTicketFromStoragePath(storagePath: string) {
     if (!supabase) {
@@ -535,12 +631,6 @@ export function TicketScanPage() {
   const columns = useMemo<readonly Column<ReviewRow>[]>(
     () => [
       {
-        key: 'entryDate',
-        name: 'Fecha',
-        width: 96,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
-      },
-      {
         key: 'concept',
         name: 'Concepto',
         width: 220,
@@ -565,20 +655,6 @@ export function TicketScanPage() {
         width: 130,
         renderCell: ({ row }) => categoryOptions.find((option) => option.value === row.categoryId)?.label ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
-      },
-      {
-        key: 'paymentInstrumentId',
-        name: 'Pago',
-        width: 130,
-        renderCell: ({ row }) => paymentInstrumentOptions.find((option) => option.value === row.paymentInstrumentId)?.label ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
-      },
-      {
-        key: 'storeId',
-        name: 'Tienda',
-        width: 120,
-        renderCell: ({ row }) => storeOptions.find((option) => option.value === row.storeId)?.label ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
       },
       {
         key: 'currencyCode',
@@ -611,7 +687,7 @@ export function TicketScanPage() {
         renderEditCell: (props) => <InputCellEditor {...props} inputType="text" />,
       },
     ],
-    [categoryOptions, currencyOptions, paymentInstrumentOptions, storeOptions, unitOptions],
+    [categoryOptions, currencyOptions, unitOptions],
   );
 
   return (
@@ -638,6 +714,9 @@ export function TicketScanPage() {
             <span className="badge ticket-card__badge" title="Gastos detectados">
               <FontAwesomeIcon icon={faReceipt} />
               <span>{rows.length}</span>
+            </span>
+            <span className="badge ticket-card__badge" title="Total del ticket en MXN">
+              <span>{ticketTotalLabel}</span>
             </span>
           </div>
         </div>
@@ -733,13 +812,23 @@ export function TicketScanPage() {
             <div className="tickets-preview-frame tickets-preview-frame--empty">Sin imagen</div>
           )}
 
-          {feedback ? <div className={feedback.includes('No fue posible') ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
+          {feedback ? <div className={isErrorFeedback(feedback) || currentTicketStatus === 'error' ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
         </article>
 
         <article className="card tickets-review-panel">
           <div className="dashboard-panel__header">
-            <h3 className="card__title">Revision</h3>
+            <h3 className="card__title">Revisión</h3>
             <div className="tickets-hero__actions">
+              <button
+                type="button"
+                className="tickets-button tickets-button--icon"
+                onClick={handleAddProduct}
+                disabled={!canAddProduct}
+                aria-label="Añadir producto"
+                title="Añadir producto"
+              >
+                <FontAwesomeIcon icon={faPlus} />
+              </button>
               <button
                 type="button"
                 className="tickets-button tickets-button--primary tickets-button--icon"
@@ -764,6 +853,47 @@ export function TicketScanPage() {
               <div className="badge-row">
                 <span className="badge">{rows.length} filas</span>
                 {currentTicketStatus === 'saved' ? <span className="badge">Guardado</span> : null}
+              </div>
+
+              <div className="finance-form tickets-bulk-fields">
+                <div className="tickets-bulk-fields__field">
+                  <span className="tickets-bulk-fields__label" title="Fecha común">
+                    <FontAwesomeIcon icon={faCalendarDay} />
+                  </span>
+                  <AppDatePicker
+                    className="dashboard-filters__control tickets-bulk-fields__control"
+                    ariaLabel="Fecha común"
+                    value={sharedEntryDate.value}
+                    onChange={(value) => applySharedField('entryDate', value)}
+                    placeholder={sharedEntryDate.isMixed ? 'Mixta' : 'AAAA-MM-DD'}
+                  />
+                </div>
+
+                <div className="tickets-bulk-fields__field">
+                  <span className="tickets-bulk-fields__label" title="Tienda común">
+                    <FontAwesomeIcon icon={faShop} />
+                  </span>
+                  <AppSelect
+                    ariaLabel="Tienda común"
+                    options={sharedStoreOptions}
+                    value={sharedStoreId.value}
+                    onChange={(value) => applySharedField('storeId', value)}
+                    placeholder={sharedStoreId.isMixed ? 'Mixta' : 'Tienda'}
+                  />
+                </div>
+
+                <div className="tickets-bulk-fields__field">
+                  <span className="tickets-bulk-fields__label" title="Pago común">
+                    <FontAwesomeIcon icon={faCreditCard} />
+                  </span>
+                  <AppSelect
+                    ariaLabel="Pago común"
+                    options={sharedPaymentOptions}
+                    value={sharedPaymentInstrumentId.value}
+                    onChange={(value) => applySharedField('paymentInstrumentId', value)}
+                    placeholder={sharedPaymentInstrumentId.isMixed ? 'Mixto' : 'Pago'}
+                  />
+                </div>
               </div>
 
               <div className="grid-wrapper grid-wrapper--tall">

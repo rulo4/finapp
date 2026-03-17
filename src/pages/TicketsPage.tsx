@@ -74,6 +74,16 @@ function isMissingStorageObjectMessage(message: string) {
   return /not found|does not exist|no such object/i.test(message);
 }
 
+function isErrorFeedback(message: string) {
+  const normalizedMessage = message.trim();
+
+  return (
+    /^(no\b|supabase\b|necesitas\b|primero\b|la fecha\b|la fila\b|el\b|la\b|selecciona\b|captura\b|este\b)/i.test(
+      normalizedMessage,
+    ) || /no se pudo/i.test(normalizedMessage)
+  );
+}
+
 export function TicketsPage() {
   const [tickets, setTickets] = useState<TicketGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -323,7 +333,7 @@ export function TicketsPage() {
         </div>
       </section>
 
-      {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
+      {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
 
       <section className="card tickets-table-card">
         {isLoading ? (

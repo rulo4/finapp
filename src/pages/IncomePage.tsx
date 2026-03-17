@@ -71,6 +71,16 @@ function getStartOfCurrentYear() {
   return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
 }
 
+function isErrorFeedback(message: string) {
+  const normalizedMessage = message.trim();
+
+  return (
+    /^(no\b|supabase\b|necesitas\b|primero\b|la fecha\b|la fila\b|el\b|la\b|selecciona\b|captura\b|este\b)/i.test(
+      normalizedMessage,
+    ) || /no se pudo/i.test(normalizedMessage)
+  );
+}
+
 function isDateWithinRange(date: string, range: { start: string; end: string }) {
   if (range.start && date < range.start) {
     return false;
@@ -113,6 +123,20 @@ function createDraftIncomeRow(defaultSourceId = ''): IncomeGridRow {
     amountMxn: '',
     notes: '',
   };
+}
+
+function withIncomeDraftRow(rows: IncomeGridRow[], defaultSourceId = '') {
+  const draftRow = rows.find((row) => row.isDraft) ?? createDraftIncomeRow(defaultSourceId);
+
+  return [draftRow, ...rows.filter((row) => !row.isDraft)];
+}
+
+function formatCurrencyTotal(value: number) {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function toIncomeGridRow(entry: IncomeEntry): IncomeGridRow {
@@ -304,7 +328,7 @@ export function IncomePage() {
     const nextRows = ((entryData as IncomeEntryRow[]) ?? []).map(normalizeIncomeEntry).map(toIncomeGridRow);
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
 
-    const loadedRows = [createDraftIncomeRow(nextSources[0]?.id ?? ''), ...nextRows];
+    const loadedRows = withIncomeDraftRow(nextRows, nextSources[0]?.id ?? '');
 
     rowsRef.current = loadedRows;
     setSources(nextSources);
@@ -480,23 +504,12 @@ export function IncomePage() {
         const currentRowIndex = currentRows.findIndex((candidate) => candidate.id === rowId);
 
         if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
-          if (row.isDraft && currentRowIndex >= 0) {
-            nextRows = currentRows.map((candidate, index) =>
-              index === currentRowIndex ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
-            );
-          } else {
-            nextRows = currentRows.filter((candidate) => candidate.id !== rowId);
-          }
-        } else if (row.isDraft) {
-          nextRows = currentRows.flatMap((candidate, index) => {
-            if (index !== currentRowIndex) {
-              return candidate;
-            }
-
-            return [savedRow, createDraftIncomeRow(sources[0]?.id ?? '')];
-          });
+          nextRows = withIncomeDraftRow(currentRows.filter((candidate) => candidate.id !== rowId), sources[0]?.id ?? '');
         } else {
-          nextRows = currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate));
+          nextRows = withIncomeDraftRow(
+            currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate)),
+            sources[0]?.id ?? '',
+          );
         }
 
         rowsRef.current = nextRows;
@@ -512,9 +525,7 @@ export function IncomePage() {
     async (row: IncomeGridRow) => {
       if (row.isDraft) {
         setRows((currentRows) => {
-          const nextRows = currentRows.map((candidate) =>
-            candidate.id === row.id ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
-          );
+          const nextRows = withIncomeDraftRow(currentRows.filter((candidate) => candidate.id !== row.id), sources[0]?.id ?? '');
           rowsRef.current = nextRows;
           return nextRows;
         });
@@ -540,7 +551,7 @@ export function IncomePage() {
 
       persistedRowsRef.current.delete(row.id);
       setRows((currentRows) => {
-        const nextRows = currentRows.filter((candidate) => candidate.id !== row.id);
+        const nextRows = withIncomeDraftRow(currentRows.filter((candidate) => candidate.id !== row.id), sources[0]?.id ?? '');
         rowsRef.current = nextRows;
         return nextRows;
       });
@@ -552,9 +563,7 @@ export function IncomePage() {
   const handleRevertRow = useCallback((row: IncomeGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
-        const nextRows = currentRows.map((candidate) =>
-          candidate.id === row.id ? createDraftIncomeRow(sources[0]?.id ?? '') : candidate,
-        );
+        const nextRows = withIncomeDraftRow(currentRows.filter((candidate) => candidate.id !== row.id), sources[0]?.id ?? '');
         rowsRef.current = nextRows;
         return nextRows;
       });
@@ -569,7 +578,10 @@ export function IncomePage() {
     }
 
     setRows((currentRows) => {
-      const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate));
+      const nextRows = withIncomeDraftRow(
+        currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate)),
+        sources[0]?.id ?? '',
+      );
       rowsRef.current = nextRows;
       return nextRows;
     });
@@ -588,6 +600,19 @@ export function IncomePage() {
     [],
   );
   const sourceLabelById = useMemo(() => new Map(sources.map((source) => [source.id, source.name])), [sources]);
+  const visibleIncomeSummary = useMemo(() => {
+    const visibleRows = rows.filter((row) => !row.isDraft);
+    const totalAmount = visibleRows.reduce((sum, row) => {
+      const rowTotal = Number(row.amountMxn);
+
+      return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
+    }, 0);
+
+    return {
+      count: visibleRows.length,
+      totalLabel: formatCurrencyTotal(totalAmount),
+    };
+  }, [rows]);
 
   const columns = useMemo<readonly Column<IncomeGridRow>[]>(
     () => [
@@ -765,9 +790,14 @@ export function IncomePage() {
             </div>
           </div>
 
+          <div className="badge-row" aria-label="Resumen de ingresos visibles">
+            <span className="badge">{visibleIncomeSummary.count} regs</span>
+            <span className="badge">{visibleIncomeSummary.totalLabel}</span>
+          </div>
+
         </div>
 
-        {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
+        {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
 
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 

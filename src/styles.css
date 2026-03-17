@@ -1381,6 +1381,35 @@ textarea {
   min-width: 0;
 }
 
+.tickets-bulk-fields {
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.tickets-bulk-fields__field {
+  display: grid;
+  gap: 6px;
+}
+
+.tickets-bulk-fields__label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #dbe3ee;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  font-size: 0.8rem;
+}
+
+.tickets-bulk-fields__control {
+  width: 100%;
+}
+
 .tickets-upload-box {
   display: grid;
   gap: 12px;
