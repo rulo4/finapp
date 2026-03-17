@@ -1,6 +1,7 @@
 {
   "chat.tools.terminal.autoApprove": {
     "npx supabase": true,
-    "git -C .": true
+    "git -C .": true,
+    "git -C \"$PWD\"": true
   }
 }
