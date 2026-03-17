@@ -119,6 +119,16 @@ function isDateWithinRange(date: string, range: { start: string; end: string }) 
   return true;
 }
 
+function isErrorFeedback(message: string) {
+  const normalizedMessage = message.trim();
+
+  return (
+    /^(no\b|supabase\b|necesitas\b|primero\b|la fecha\b|la fila\b|el\b|la\b|selecciona\b|captura\b|este\b)/i.test(
+      normalizedMessage,
+    ) || /no se pudo/i.test(normalizedMessage)
+  );
+}
+
 const ACTION_COLUMN_WIDTH = 72;
 const DATE_COLUMN_WIDTH = 88;
 const CONCEPT_COLUMN_WIDTH = 200;
@@ -168,6 +178,20 @@ function createDraftExpenseRow(): ExpenseGridRow {
     totalAmountMxn: '',
     notes: '',
   };
+}
+
+function withExpenseDraftRow(rows: ExpenseGridRow[]) {
+  const draftRow = rows.find((row) => row.isDraft) ?? createDraftExpenseRow();
+
+  return [draftRow, ...rows.filter((row) => !row.isDraft)];
+}
+
+function formatCurrencyTotal(value: number) {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'MXN',
+    maximumFractionDigits: 2,
+  }).format(value);
 }
 
 function toExpenseGridRow(entry: ExpenseEntry, ticketId: string | null): ExpenseGridRow {
@@ -533,7 +557,7 @@ export function ExpensesPage() {
     const normalizedEntries = ((entriesResult.data as ExpenseEntryRow[]) ?? []).map(normalizeExpenseEntry);
     const nextRows = normalizedEntries.map((entry) => toExpenseGridRow(entry, entry.ticket_url ?? null));
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
-    const loadedRows = [createDraftExpenseRow(), ...nextRows];
+    const loadedRows = withExpenseDraftRow(nextRows);
 
     rowsRef.current = loadedRows;
     setCategories((categoriesResult.data as ExpenseCategory[]) ?? []);
@@ -722,21 +746,9 @@ export function ExpensesPage() {
         const currentRowIndex = currentRows.findIndex((candidate) => candidate.id === rowId);
 
         if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
-          if (row.isDraft && currentRowIndex >= 0) {
-            nextRows = currentRows.map((candidate, index) => (index === currentRowIndex ? createDraftExpenseRow() : candidate));
-          } else {
-            nextRows = currentRows.filter((candidate) => candidate.id !== rowId);
-          }
-        } else if (row.isDraft) {
-          nextRows = currentRows.flatMap((candidate, index) => {
-            if (index !== currentRowIndex) {
-              return candidate;
-            }
-
-            return [savedRow, createDraftExpenseRow()];
-          });
+          nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== rowId));
         } else {
-          nextRows = currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate));
+          nextRows = withExpenseDraftRow(currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate)));
         }
 
         rowsRef.current = nextRows;
@@ -752,7 +764,7 @@ export function ExpensesPage() {
     async (row: ExpenseGridRow) => {
       if (row.isDraft) {
         setRows((currentRows) => {
-          const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? createDraftExpenseRow() : candidate));
+          const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
           rowsRef.current = nextRows;
           return nextRows;
         });
@@ -778,7 +790,7 @@ export function ExpensesPage() {
 
       persistedRowsRef.current.delete(row.id);
       setRows((currentRows) => {
-        const nextRows = currentRows.filter((candidate) => candidate.id !== row.id);
+        const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
         rowsRef.current = nextRows;
         return nextRows;
       });
@@ -790,7 +802,7 @@ export function ExpensesPage() {
   const handleRevertRow = useCallback((row: ExpenseGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
-        const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? createDraftExpenseRow() : candidate));
+        const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
         rowsRef.current = nextRows;
         return nextRows;
       });
@@ -805,7 +817,7 @@ export function ExpensesPage() {
     }
 
     setRows((currentRows) => {
-      const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate));
+      const nextRows = withExpenseDraftRow(currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate)));
       rowsRef.current = nextRows;
       return nextRows;
     });
@@ -843,6 +855,19 @@ export function ExpensesPage() {
   );
   const storeLabelById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const unitLabelById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
+  const visibleExpenseSummary = useMemo(() => {
+    const visibleRows = rows.filter((row) => !row.isDraft);
+    const totalAmount = visibleRows.reduce((sum, row) => {
+      const rowTotal = Number(row.totalAmountMxn);
+
+      return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
+    }, 0);
+
+    return {
+      count: visibleRows.length,
+      totalLabel: formatCurrencyTotal(totalAmount),
+    };
+  }, [rows]);
 
   const columns = useMemo<readonly Column<ExpenseGridRow>[]>(
     () => [
@@ -1102,10 +1127,15 @@ export function ExpensesPage() {
             </div>
           </div>
 
+          <div className="badge-row" aria-label="Resumen de egresos visibles">
+            <span className="badge">{visibleExpenseSummary.count} regs</span>
+            <span className="badge">{visibleExpenseSummary.totalLabel}</span>
+          </div>
+
         </div>
 
 
-        {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
+        {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
         <div className="grid-wrapper grid-wrapper--tall">

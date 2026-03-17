@@ -87,6 +87,8 @@ All pages are lazy-loaded via `React.lazy` + `<Suspense>`. Routes are nested ins
 - `ENABLE_MOBILE_OPTIMIZED_LAYOUTS` in `src/config/ui.ts` is `false` by default; responsive sidebar uses this flag.
 - Ingresos, egresos y dashboard deben usar una sola experiencia responsive; no mantener formularios o flujos especiales solo para móvil.
 - Sidebar collapse state is persisted in `localStorage` under key `finapp.sidebar.collapsed`.
+- Usa el menor texto posible en la UI; prefiere iconos claros cuando el contexto del campo o la acción siga siendo obvio.
+- En acciones o columnas compactas, favorece icon-only buttons con `aria-label` y `title` en lugar de texto visible repetitivo.
 
 ## Data Grid Pattern
 Use `react-data-grid` for tabular data entry. Shared cell editors live in `src/features/shared/gridEditors.tsx`:
@@ -94,6 +96,7 @@ Use `react-data-grid` for tabular data entry. Shared cell editors live in `src/f
 - `SelectCellEditor` – wraps `AppSelect` (react-select) for dropdown cells.
 - `AppSelect` – standalone searchable select component with consistent styling.
 - Date values use ISO-8601 string format (`YYYY-MM-DD`); use helpers from `isoDate.ts`.
+- Siempre utiliza la dependencia instalada `react-select` para dropdowns/selects; no introducir selects custom ni usar `<select>` nativo salvo que exista una limitación técnica clara.
 
 ## Development Commands
 ```bash
