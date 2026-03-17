@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column } from 'react-data-grid';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
@@ -195,6 +195,7 @@ export function TicketScanPage() {
   const [rows, setRows] = useState<ReviewRow[]>([]);
   const [currentTicketId, setCurrentTicketId] = useState<string | null>(null);
   const [currentTicketStatus, setCurrentTicketStatus] = useState<TicketStatus | null>(null);
+  const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
@@ -291,6 +292,7 @@ export function TicketScanPage() {
       const ticket = data as TicketRecord;
       setCurrentTicketId(ticket.id);
       setCurrentTicketStatus(ticket.status);
+      setCurrentStoragePath(ticket.storage_path);
       setRows((ticket.parsed_expenses ?? []).map(toReviewRow));
       setFeedback(ticket.error_message ?? null);
 
@@ -344,6 +346,29 @@ export function TicketScanPage() {
     return paymentInstrumentId ? paymentNameById.get(paymentInstrumentId) ?? 'Sin pago' : 'Sin pago';
   }, [paymentNameById, rows]);
   const canSelectImage = !previewUrl && !currentTicketId && !isProcessing && !isSaving && !isCatalogsLoading;
+  const canRetryProcessing = Boolean(currentStoragePath && currentTicketStatus === 'error' && !isProcessing && !isSaving);
+
+  async function processTicketFromStoragePath(storagePath: string) {
+    if (!supabase) {
+      throw new Error('Supabase no esta disponible para procesar tickets.');
+    }
+
+    const { data, error } = await supabase.functions.invoke('process-ticket', {
+      body: {
+        storage_path: storagePath,
+      },
+    });
+
+    if (error) {
+      throw error;
+    }
+
+    setCurrentTicketId(data.ticket_id as string);
+    setCurrentTicketStatus('processed');
+    setCurrentStoragePath(storagePath);
+    setRows(((data.parsed_expenses ?? []) as ParsedTicketExpense[]).map(toReviewRow));
+    setFeedback('Ticket procesado.');
+  }
 
   async function handleFileSelection(file: File) {
     if (!supabase || !user) {
@@ -376,28 +401,36 @@ export function TicketScanPage() {
         throw uploadError;
       }
 
-      const { data, error } = await supabase.functions.invoke('process-ticket', {
-        body: {
-          storage_path: storagePath,
-        },
-      });
-
-      if (error) {
-        throw error;
-      }
-
-      setCurrentTicketId(data.ticket_id as string);
-      setCurrentTicketStatus('processed');
-      setRows(((data.parsed_expenses ?? []) as ParsedTicketExpense[]).map(toReviewRow));
-      setFeedback('Ticket procesado.');
+      setCurrentStoragePath(storagePath);
+      await processTicketFromStoragePath(storagePath);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'No fue posible procesar el ticket.';
+      setCurrentTicketStatus('error');
       setFeedback(`No fue posible procesar el ticket: ${message}`);
     } finally {
       setIsProcessing(false);
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
+    }
+  }
+
+  async function handleRetryProcessing() {
+    if (!currentStoragePath) {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      setFeedback(null);
+      setRows([]);
+      await processTicketFromStoragePath(currentStoragePath);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No fue posible reprocesar el ticket.';
+      setCurrentTicketStatus('error');
+      setFeedback(`No fue posible reprocesar el ticket: ${message}`);
+    } finally {
+      setIsProcessing(false);
     }
   }
 
@@ -607,7 +640,6 @@ export function TicketScanPage() {
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 onChange={(event) => {
                   const file = event.target.files?.[0];
 
@@ -619,6 +651,19 @@ export function TicketScanPage() {
               />
               <FontAwesomeIcon icon={faCamera} />
             </label>
+          ) : null}
+          {canRetryProcessing ? (
+            <button
+              type="button"
+              className="tickets-button tickets-button--icon"
+              onClick={() => {
+                void handleRetryProcessing();
+              }}
+              aria-label="Reintentar procesamiento"
+              title="Reintentar procesamiento"
+            >
+              <FontAwesomeIcon icon={faArrowRotateRight} />
+            </button>
           ) : null}
           <Link to="/tickets" className="tickets-button tickets-button--icon" aria-label="Volver" title="Volver">
             <FontAwesomeIcon icon={faArrowLeft} />

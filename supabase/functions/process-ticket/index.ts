@@ -51,6 +51,11 @@ type ProcessTicketRequest = {
   storage_path?: string;
 };
 
+type ExistingTicketRecord = {
+  id: string;
+  status: 'pending' | 'processing' | 'processed' | 'saved' | 'error';
+};
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -469,22 +474,60 @@ Deno.serve(async (request: Request) => {
       return jsonResponse(403, { error: 'storage_path must be inside the authenticated user folder' });
     }
 
-    const { data: ticketRecord, error: ticketInsertError } = await serviceClient
+    const { data: existingTicket, error: existingTicketError } = await serviceClient
       .from('tickets')
-      .insert({
-        user_id: authData.user.id,
-        storage_path: storagePath,
-        status: 'processing',
-        error_message: null,
-      })
-      .select('id')
-      .single();
+      .select('id, status')
+      .eq('user_id', authData.user.id)
+      .eq('storage_path', storagePath)
+      .maybeSingle();
 
-    if (ticketInsertError || !ticketRecord) {
-      throw ticketInsertError ?? new Error('Unable to create ticket record');
+    if (existingTicketError) {
+      throw existingTicketError;
     }
 
-    const ticketId = ticketRecord.id as string;
+    let ticketId: string;
+
+    if (existingTicket) {
+      const existingRecord = existingTicket as ExistingTicketRecord;
+
+      if (existingRecord.status === 'saved') {
+        return jsonResponse(409, { error: 'Este ticket ya fue guardado y no puede reprocesarse.' });
+      }
+
+      const { error: ticketResetError } = await serviceClient
+        .from('tickets')
+        .update({
+          status: 'processing',
+          raw_llm_response: null,
+          parsed_expenses: null,
+          error_message: null,
+        })
+        .eq('id', existingRecord.id)
+        .eq('user_id', authData.user.id);
+
+      if (ticketResetError) {
+        throw ticketResetError;
+      }
+
+      ticketId = existingRecord.id;
+    } else {
+      const { data: ticketRecord, error: ticketInsertError } = await serviceClient
+        .from('tickets')
+        .insert({
+          user_id: authData.user.id,
+          storage_path: storagePath,
+          status: 'processing',
+          error_message: null,
+        })
+        .select('id')
+        .single();
+
+      if (ticketInsertError || !ticketRecord) {
+        throw ticketInsertError ?? new Error('Unable to create ticket record');
+      }
+
+      ticketId = ticketRecord.id as string;
+    }
 
     try {
       const [
