@@ -107,6 +107,18 @@ function getStartOfCurrentYear() {
   return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
 }
 
+function isDateWithinRange(date: string, range: { start: string; end: string }) {
+  if (range.start && date < range.start) {
+    return false;
+  }
+
+  if (range.end && date > range.end) {
+    return false;
+  }
+
+  return true;
+}
+
 const ACTION_COLUMN_WIDTH = 72;
 const DATE_COLUMN_WIDTH = 88;
 const CONCEPT_COLUMN_WIDTH = 200;
@@ -663,7 +675,7 @@ export function ExpensesPage() {
       };
 
       const result = row.isDraft
-        ? await supabase.from('expense_entries').insert(payload)
+        ? await supabase.from('expense_entries').insert(payload).select('id').single()
         : await supabase.from('expense_entries').update(payload).eq('id', row.persistedId);
 
       if (result.error) {
@@ -678,17 +690,69 @@ export function ExpensesPage() {
         return;
       }
 
+      const persistedId = row.isDraft ? result.data?.id ?? null : row.persistedId;
+
+      if (!persistedId) {
+        updateExpenseRow(rowId, {
+          status: 'error',
+          errorMessage: 'No se recibió el identificador del egreso guardado.',
+        });
+        setFeedback('No se recibió el identificador del egreso guardado.');
+        return;
+      }
+
+      const savedRow: ExpenseGridRow = {
+        ...normalizeExpenseGridRow(row),
+        persistedId,
+        isDraft: false,
+        status: 'saved',
+        errorMessage: null,
+        ticketUrl: row.ticketUrl.trim(),
+        ticketId: row.ticketUrl.trim() || null,
+      };
+
+      if (isDateWithinRange(savedRow.entryDate, activeDateRange)) {
+        persistedRowsRef.current.set(rowId, savedRow);
+      } else {
+        persistedRowsRef.current.delete(rowId);
+      }
+
+      setRows((currentRows) => {
+        let nextRows: ExpenseGridRow[];
+        const currentRowIndex = currentRows.findIndex((candidate) => candidate.id === rowId);
+
+        if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
+          if (row.isDraft && currentRowIndex >= 0) {
+            nextRows = currentRows.map((candidate, index) => (index === currentRowIndex ? createDraftExpenseRow() : candidate));
+          } else {
+            nextRows = currentRows.filter((candidate) => candidate.id !== rowId);
+          }
+        } else if (row.isDraft) {
+          nextRows = currentRows.flatMap((candidate, index) => {
+            if (index !== currentRowIndex) {
+              return candidate;
+            }
+
+            return [savedRow, createDraftExpenseRow()];
+          });
+        } else {
+          nextRows = currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate));
+        }
+
+        rowsRef.current = nextRows;
+        return nextRows;
+      });
+
       setFeedback(row.isDraft ? 'Egreso guardado correctamente.' : 'Egreso actualizado correctamente.');
-      await loadExpenseData();
     },
-    [loadExpenseData, unitsOfMeasure],
+    [activeDateRange, unitsOfMeasure],
   );
 
   const handleDeleteRow = useCallback(
     async (row: ExpenseGridRow) => {
       if (row.isDraft) {
         setRows((currentRows) => {
-          const nextRows = [createDraftExpenseRow(), ...currentRows.filter((candidate) => !candidate.isDraft)];
+          const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? createDraftExpenseRow() : candidate));
           rowsRef.current = nextRows;
           return nextRows;
         });
@@ -712,16 +776,21 @@ export function ExpensesPage() {
         return;
       }
 
+      persistedRowsRef.current.delete(row.id);
+      setRows((currentRows) => {
+        const nextRows = currentRows.filter((candidate) => candidate.id !== row.id);
+        rowsRef.current = nextRows;
+        return nextRows;
+      });
       setFeedback('Egreso eliminado correctamente.');
-      await loadExpenseData();
     },
-    [loadExpenseData],
+    [],
   );
 
   const handleRevertRow = useCallback((row: ExpenseGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
-        const nextRows = [createDraftExpenseRow(), ...currentRows.filter((candidate) => !candidate.isDraft)];
+        const nextRows = currentRows.map((candidate) => (candidate.id === row.id ? createDraftExpenseRow() : candidate));
         rowsRef.current = nextRows;
         return nextRows;
       });

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
+import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faImage, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column } from 'react-data-grid';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
@@ -202,7 +202,8 @@ export function TicketScanPage() {
   const [isCatalogsLoading, setIsCatalogsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
   const ticketId = searchParams.get('ticket');
 
   useEffect(() => {
@@ -409,10 +410,22 @@ export function TicketScanPage() {
       setFeedback(`No fue posible procesar el ticket: ${message}`);
     } finally {
       setIsProcessing(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
+      if (cameraInputRef.current) {
+        cameraInputRef.current.value = '';
+      }
+
+      if (galleryInputRef.current) {
+        galleryInputRef.current.value = '';
       }
     }
+  }
+
+  function openCameraPicker() {
+    cameraInputRef.current?.click();
+  }
+
+  function openGalleryPicker() {
+    galleryInputRef.current?.click();
   }
 
   async function handleRetryProcessing() {
@@ -631,13 +644,24 @@ export function TicketScanPage() {
 
         <div className="tickets-hero__actions">
           {canSelectImage ? (
-            <label
-              className="tickets-button tickets-button--primary tickets-button--icon"
-              aria-label="Seleccionar ticket"
-              title="Seleccionar ticket"
-            >
+            <>
               <input
-                ref={fileInputRef}
+                ref={cameraInputRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+
+                  if (file) {
+                    void handleFileSelection(file);
+                  }
+                }}
+                disabled={!canSelectImage}
+                hidden
+              />
+              <input
+                ref={galleryInputRef}
                 type="file"
                 accept="image/*"
                 onChange={(event) => {
@@ -648,9 +672,29 @@ export function TicketScanPage() {
                   }
                 }}
                 disabled={!canSelectImage}
+                hidden
               />
-              <FontAwesomeIcon icon={faCamera} />
-            </label>
+              <button
+                type="button"
+                className="tickets-button tickets-button--primary tickets-button--icon"
+                aria-label="Tomar foto"
+                title="Tomar foto"
+                onClick={openCameraPicker}
+                disabled={!canSelectImage}
+              >
+                <FontAwesomeIcon icon={faCamera} />
+              </button>
+              <button
+                type="button"
+                className="tickets-button tickets-button--icon"
+                aria-label="Elegir imagen"
+                title="Elegir imagen"
+                onClick={openGalleryPicker}
+                disabled={!canSelectImage}
+              >
+                <FontAwesomeIcon icon={faImage} />
+              </button>
+            </>
           ) : null}
           {canRetryProcessing ? (
             <button
