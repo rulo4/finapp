@@ -1,6 +1,4 @@
-import { useEffect, useState } from 'react';
-import { AppDatePicker } from '../features/shared/AppDatePicker';
-import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
+import { useEffect, useMemo, useState } from 'react';
 import {
   checkSupabaseConnection,
   getSupabaseConfig,
@@ -65,6 +63,8 @@ function getTodayDate() {
   return new Date().toISOString().slice(0, 10);
 }
 
+type DashboardPeriodMode = 'all' | 'month' | 'year';
+
 const currencyFormatter = new Intl.NumberFormat('es-MX', {
   style: 'currency',
   currency: 'MXN',
@@ -78,7 +78,6 @@ const dateFormatter = new Intl.DateTimeFormat('es-MX', {
 });
 
 export function DashboardPage() {
-  const defaultWindow = getMonthWindow();
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>(
     isSupabaseConfigured() ? 'checking' : 'idle',
   );
@@ -95,26 +94,26 @@ export function DashboardPage() {
   const [activeSources, setActiveSources] = useState(0);
   const [activeCategories, setActiveCategories] = useState(0);
   const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
-  const [periodStart, setPeriodStart] = useState(defaultWindow.start);
-  const [periodEnd, setPeriodEnd] = useState(defaultWindow.end);
+  const [periodMode, setPeriodMode] = useState<DashboardPeriodMode>('month');
   const { url, anonKeyLoaded } = getSupabaseConfig();
-  const hasInvalidFormat = !isIsoDateString(periodStart) || !isIsoDateString(periodEnd);
-  const hasInvalidRange = !hasInvalidFormat && periodStart > periodEnd;
+  const activePeriod = useMemo(() => {
+    if (periodMode === 'month') {
+      return getMonthWindow();
+    }
+
+    if (periodMode === 'year') {
+      return getYearWindow();
+    }
+
+    return {
+      start: '',
+      end: '',
+    };
+  }, [periodMode]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
       return;
-    }
-
-    if (hasInvalidFormat) {
-      setDashboardMessage('El periodo no es valido: usa el formato AAAA-MM-DD.');
-      setIsMetricsLoading(false);
-      return;
-    }
-
-    if (hasInvalidRange) {
-      setDashboardMessage('El periodo no es valido: la fecha inicial debe ser menor o igual a la final.');
-      setIsMetricsLoading(false);
       return;
     }
 
@@ -139,32 +138,39 @@ export function DashboardPage() {
         return;
       }
 
+      let incomePeriodQuery = supabase.from('income_entries').select('amount_mxn, entry_date');
+      let expensePeriodQuery = supabase.from('expense_entries').select('total_amount_mxn, entry_date');
+      let incomeRecentQuery = supabase
+        .from('income_entries')
+        .select('id, entry_date, amount_mxn, income_sources(name)')
+        .order('entry_date', { ascending: false })
+        .limit(5);
+      let expenseRecentQuery = supabase
+        .from('expense_entries')
+        .select('id, entry_date, concept, total_amount_mxn, expense_categories(name)')
+        .order('entry_date', { ascending: false })
+        .limit(5);
+
+      if (activePeriod.start) {
+        incomePeriodQuery = incomePeriodQuery.gte('entry_date', activePeriod.start);
+        expensePeriodQuery = expensePeriodQuery.gte('entry_date', activePeriod.start);
+        incomeRecentQuery = incomeRecentQuery.gte('entry_date', activePeriod.start);
+        expenseRecentQuery = expenseRecentQuery.gte('entry_date', activePeriod.start);
+      }
+
+      if (activePeriod.end) {
+        incomePeriodQuery = incomePeriodQuery.lte('entry_date', activePeriod.end);
+        expensePeriodQuery = expensePeriodQuery.lte('entry_date', activePeriod.end);
+        incomeRecentQuery = incomeRecentQuery.lte('entry_date', activePeriod.end);
+        expenseRecentQuery = expenseRecentQuery.lte('entry_date', activePeriod.end);
+      }
+
       const [incomePeriod, expensePeriod, incomeRecent, expenseRecent, sourcesResult, categoriesResult] =
         await Promise.all([
-          supabase
-            .from('income_entries')
-            .select('amount_mxn, entry_date')
-            .gte('entry_date', periodStart)
-            .lte('entry_date', periodEnd),
-          supabase
-            .from('expense_entries')
-            .select('total_amount_mxn, entry_date')
-            .gte('entry_date', periodStart)
-            .lte('entry_date', periodEnd),
-          supabase
-            .from('income_entries')
-            .select('id, entry_date, amount_mxn, income_sources(name)')
-            .gte('entry_date', periodStart)
-            .lte('entry_date', periodEnd)
-            .order('entry_date', { ascending: false })
-            .limit(5),
-          supabase
-            .from('expense_entries')
-            .select('id, entry_date, concept, total_amount_mxn, expense_categories(name)')
-            .gte('entry_date', periodStart)
-            .lte('entry_date', periodEnd)
-            .order('entry_date', { ascending: false })
-            .limit(5),
+          incomePeriodQuery,
+          expensePeriodQuery,
+          incomeRecentQuery,
+          expenseRecentQuery,
           supabase.from('income_sources').select('id', { count: 'exact', head: true }).eq('is_active', true),
           supabase.from('expense_categories').select('id', { count: 'exact', head: true }).eq('is_active', true),
         ]);
@@ -223,7 +229,11 @@ export function DashboardPage() {
           .sort((left, right) => right.date.localeCompare(left.date))
           .slice(0, 6),
       );
-      setDashboardMessage('Resumen cargado con datos reales del usuario autenticado para el periodo seleccionado.');
+      setDashboardMessage(
+        activePeriod.start
+          ? 'Resumen cargado con datos reales del usuario autenticado para el periodo seleccionado.'
+          : 'Resumen cargado con todos los datos visibles del usuario autenticado.',
+      );
       setIsMetricsLoading(false);
     }
 
@@ -232,7 +242,7 @@ export function DashboardPage() {
     return () => {
       cancelled = true;
     };
-  }, [hasInvalidFormat, hasInvalidRange, periodEnd, periodStart]);
+  }, [activePeriod.end, activePeriod.start]);
 
   return (
     <div className="page">
@@ -240,70 +250,38 @@ export function DashboardPage() {
         <div className="dashboard-panel__header">
           <div>
             <h3 className="card__title">Periodo del dashboard</h3>
-            <p className="card__text">Ajusta el rango de fechas para recalcular indicadores y actividad.</p>
+            <p className="card__text">Cambia el periodo para recalcular indicadores y actividad.</p>
           </div>
           <div className="dashboard-filters__actions">
             <button
               type="button"
-              className="secondary-button"
-              onClick={() => {
-                const monthWindow = getMonthWindow();
-                setPeriodStart(monthWindow.start);
-                setPeriodEnd(monthWindow.end);
-              }}
+              className={`income-period-filter__button ${periodMode === 'all' ? 'income-period-filter__button--active' : ''}`}
+              onClick={() => setPeriodMode('all')}
+            >
+              Todo
+            </button>
+            <button
+              type="button"
+              className={`income-period-filter__button ${periodMode === 'month' ? 'income-period-filter__button--active' : ''}`}
+              onClick={() => setPeriodMode('month')}
             >
               Este mes
             </button>
             <button
               type="button"
-              className="secondary-button"
-              onClick={() => {
-                const yearWindow = getYearWindow();
-                setPeriodStart(yearWindow.start);
-                setPeriodEnd(yearWindow.end);
-              }}
+              className={`income-period-filter__button ${periodMode === 'year' ? 'income-period-filter__button--active' : ''}`}
+              onClick={() => setPeriodMode('year')}
             >
-              Año actual
+              Este año
             </button>
           </div>
         </div>
 
-        <div className="dashboard-filters__grid">
-          <label className="field-label dashboard-filters__field">
-            <span>Desde</span>
-            <AppDatePicker
-              className="dashboard-filters__control"
-              ariaLabel="Desde"
-              value={periodStart}
-              onChange={setPeriodStart}
-              max={periodEnd || getTodayDate()}
-              placeholder={ISO_DATE_PLACEHOLDER}
-            />
-          </label>
-          <label className="field-label dashboard-filters__field">
-            <span>Hasta</span>
-            <AppDatePicker
-              className="dashboard-filters__control"
-              ariaLabel="Hasta"
-              value={periodEnd}
-              onChange={setPeriodEnd}
-              min={periodStart}
-              max={getTodayDate()}
-              placeholder={ISO_DATE_PLACEHOLDER}
-            />
-          </label>
-        </div>
-
-        {hasInvalidFormat ? (
-          <p className="inline-hint">Usa fechas en formato AAAA-MM-DD.</p>
-        ) : hasInvalidRange ? (
-          <p className="inline-hint">La fecha inicial no puede ser mayor que la fecha final.</p>
-        ) : (
-          <p className="inline-hint">
-            Periodo activo: {dateFormatter.format(new Date(`${periodStart}T00:00:00`))} al{' '}
-            {dateFormatter.format(new Date(`${periodEnd}T00:00:00`))}.
-          </p>
-        )}
+        <p className="inline-hint">
+          {activePeriod.start
+            ? `Periodo activo: ${dateFormatter.format(new Date(`${activePeriod.start}T00:00:00`))} al ${dateFormatter.format(new Date(`${activePeriod.end}T00:00:00`))}.`
+            : 'Periodo activo: todos los registros visibles bajo la sesión actual.'}
+        </p>
       </section>
 
       <section className="kpi-grid">

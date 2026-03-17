@@ -2,11 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
-import { AppDatePicker } from '../features/shared/AppDatePicker';
-import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
-import { isIsoDateString, ISO_DATE_PLACEHOLDER } from '../features/shared/isoDate';
-import { useMediaQuery } from '../features/shared/useMediaQuery';
+import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { isIsoDateString } from '../features/shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type IncomeSource = {
@@ -47,12 +44,7 @@ type IncomeGridRow = {
   notes: string;
 };
 
-type IncomeDateFilterMode = 'all' | 'month' | 'year' | 'custom';
-
-type IncomeDateRange = {
-  start: string;
-  end: string;
-};
+type IncomeDateFilterMode = 'all' | 'month' | 'year';
 
 function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
   const relation = Array.isArray(row.income_sources) ? row.income_sources[0] ?? null : row.income_sources;
@@ -79,13 +71,6 @@ function getStartOfCurrentYear() {
   return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
 }
 
-function getDefaultCustomDateRange(): IncomeDateRange {
-  return {
-    start: getStartOfCurrentMonth(),
-    end: getTodayDate(),
-  };
-}
-
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
     return '';
@@ -99,7 +84,7 @@ function createLocalId(prefix: string) {
 }
 
 const DEFAULT_COLUMN_WIDTH = 108;
-const GRID_ROW_HEIGHT = 32;
+const GRID_ROW_HEIGHT = 30;
 
 function createDraftIncomeRow(defaultSourceId = ''): IncomeGridRow {
   return {
@@ -223,79 +208,20 @@ function validateIncomeRow(row: IncomeGridRow) {
   return null;
 }
 
-function getIncomeStatusLabel(row: IncomeGridRow) {
-  switch (row.status) {
-    case 'saving':
-      return 'Guardando';
-    case 'dirty':
-      return 'Pendiente';
-    case 'error':
-      return 'Error';
-    case 'saved':
-      return 'Guardado';
-    default:
-      return 'Nuevo';
-  }
-}
-
-function formatIncomeMxnValue(value: string) {
-  const parsedValue = Number(value);
-
-  if (!Number.isFinite(parsedValue) || parsedValue <= 0) {
-    return 'Pendiente';
-  }
-
-  return `MXN ${parsedValue.toFixed(2)}`;
-}
-
-const MOBILE_VISIBLE_ROW_COUNT = 4;
-
 export function IncomePage() {
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [rows, setRows] = useState<IncomeGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<IncomeDateFilterMode>('month');
-  const [customDateRange, setCustomDateRange] = useState<IncomeDateRange>(() => getDefaultCustomDateRange());
-  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
-  const [showAllMobileRows, setShowAllMobileRows] = useState(false);
   const rowsRef = useRef<IncomeGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, IncomeGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
   const autoEditCellRef = useRef<string | null>(null);
-  const matchesMobile = useMediaQuery('(max-width: 768px)');
-  const isMobile = ENABLE_MOBILE_OPTIMIZED_LAYOUTS && matchesMobile;
 
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-
-  useEffect(() => {
-    if (rows.length === 0) {
-      setSelectedRowId(null);
-      return;
-    }
-
-    if (!selectedRowId || !rows.some((row) => row.id === selectedRowId)) {
-      setSelectedRowId(rows[0]?.id ?? null);
-    }
-  }, [rows, selectedRowId]);
-
-  const dateFilterError = useMemo(() => {
-    if (dateFilterMode !== 'custom') {
-      return null;
-    }
-
-    if (!customDateRange.start || !customDateRange.end) {
-      return 'Completa la fecha inicial y final para aplicar el rango.';
-    }
-
-    if (customDateRange.start > customDateRange.end) {
-      return 'La fecha inicial no puede ser posterior a la fecha final.';
-    }
-
-    return null;
-  }, [customDateRange.end, customDateRange.start, dateFilterMode]);
 
   const activeDateRange = useMemo(() => {
     if (dateFilterMode === 'month') {
@@ -312,19 +238,11 @@ export function IncomePage() {
       };
     }
 
-    if (dateFilterMode === 'custom') {
-      if (dateFilterError) {
-        return null;
-      }
-
-      return customDateRange;
-    }
-
     return {
       start: '',
       end: '',
     };
-  }, [customDateRange, dateFilterError, dateFilterMode]);
+  }, [dateFilterMode]);
 
   const loadIncomeData = useCallback(async () => {
     if (!activeDateRange) {
@@ -712,31 +630,8 @@ export function IncomePage() {
   );
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
-  const selectedMobileRow = rows.find((row) => row.id === selectedRowId) ?? rows[0] ?? null;
-  const mobileErrorMessage = selectedMobileRow?.errorMessage ?? currentErrorMessage;
-  const mobileListRows = useMemo(() => {
-    if (!selectedMobileRow) {
-      return rows;
-    }
-
-    const draftRow = rows.find((row) => row.isDraft) ?? null;
-    const orderedIds = [selectedMobileRow.id, draftRow?.id].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
-    const prioritizedRows = orderedIds
-      .map((id) => rows.find((row) => row.id === id) ?? null)
-      .filter((row): row is IncomeGridRow => row != null);
-    const remainingRows = rows.filter((row) => !orderedIds.includes(row.id));
-
-    return [...prioritizedRows, ...remainingRows];
-  }, [rows, selectedMobileRow]);
-  const visibleMobileRows = showAllMobileRows ? mobileListRows : mobileListRows.slice(0, MOBILE_VISIBLE_ROW_COUNT);
 
   function handleSelectDateFilter(nextMode: IncomeDateFilterMode) {
-    if (nextMode === 'custom') {
-      setCustomDateRange((currentRange) =>
-        currentRange.start && currentRange.end ? currentRange : getDefaultCustomDateRange(),
-      );
-    }
-
     setDateFilterMode(nextMode);
   }
 
@@ -794,247 +689,45 @@ export function IncomePage() {
               >
                 Este año
               </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'custom' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('custom')}
-                disabled={isLoading}
-              >
-                Rango
-              </button>
             </div>
-
-            {dateFilterMode === 'custom' ? (
-              <div className="income-date-range" aria-label="Rango personalizado de fechas">
-                <label className="income-date-range__field">
-                  <span>De</span>
-                  <AppDatePicker
-                    ariaLabel="Fecha inicial"
-                    className="income-date-range__input"
-                    value={customDateRange.start}
-                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, start: value }))}
-                    placeholder={ISO_DATE_PLACEHOLDER}
-                    max={customDateRange.end || undefined}
-                  />
-                </label>
-                <label className="income-date-range__field">
-                  <span>A</span>
-                  <AppDatePicker
-                    ariaLabel="Fecha final"
-                    className="income-date-range__input"
-                    value={customDateRange.end}
-                    onChange={(value) => setCustomDateRange((currentRange) => ({ ...currentRange, end: value }))}
-                    placeholder={ISO_DATE_PLACEHOLDER}
-                    min={customDateRange.start || undefined}
-                  />
-                </label>
-              </div>
-            ) : null}
           </div>
 
         </div>
 
-        {dateFilterError ? <div className="inline-hint inline-hint--error">{dateFilterError}</div> : null}
         {feedback ? <div className="feedback-banner feedback-banner--error">{feedback}</div> : null}
 
-        {isMobile ? (
-          <div className="mobile-income">
-            <div className="mobile-income__picker">
-              <div className="mobile-income__picker-list">
-                {visibleMobileRows.map((row) => {
-                  const sourceLabel = row.isDraft ? 'Nuevo' : (sourceLabelById.get(row.sourceId) ?? 'Sin fuente');
-                  const compactStatus = row.status === 'saved' ? null : getIncomeStatusLabel(row);
+        {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
-                  return (
-                    <button
-                      key={row.id}
-                      type="button"
-                      className={`mobile-income__chip ${row.id === selectedMobileRow?.id ? 'mobile-income__chip--active' : ''}`}
-                      onClick={() => setSelectedRowId(row.id)}
-                    >
-                      <span className="mobile-income__chip-line">
-                        <span className="mobile-income__chip-title">{sourceLabel}</span>
-                        <span className="mobile-income__chip-date">{row.entryDate || 'Sin fecha'}</span>
-                        <span className="mobile-income__chip-amount">{formatIncomeMxnValue(row.amountMxn)}</span>
-                        {compactStatus ? (
-                          <span className={`mobile-income__chip-state mobile-income__chip-state--${row.status}`}>{compactStatus}</span>
-                        ) : null}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-              {rows.length > MOBILE_VISIBLE_ROW_COUNT ? (
-                <button
-                  type="button"
-                  className="mobile-income__toggle"
-                  onClick={() => setShowAllMobileRows((currentValue) => !currentValue)}
-                >
-                  {showAllMobileRows ? 'Ver menos' : 'Ver mas'}
-                </button>
-              ) : null}
-            </div>
-
-            {selectedMobileRow ? (
-              <div className="mobile-income__editor">
-                <div className="mobile-income__editor-header">
-                  <span className={`status-pill status-pill--${selectedMobileRow.status === 'error' ? 'checking' : 'ok'}`}>
-                    {getIncomeStatusLabel(selectedMobileRow)}
-                  </span>
-                </div>
-
-                {mobileErrorMessage ? <div className="feedback-banner feedback-banner--error">{mobileErrorMessage}</div> : null}
-
-                <div className="mobile-form">
-                  <label className="mobile-form__field">
-                    <span>Fecha</span>
-                    <AppDatePicker
-                      ariaLabel="Fecha"
-                      className="mobile-form__control"
-                      value={selectedMobileRow.entryDate}
-                      onChange={(value) => updateIncomeRow(selectedMobileRow.id, { entryDate: value })}
-                      placeholder={ISO_DATE_PLACEHOLDER}
-                    />
-                  </label>
-
-                  <label className="mobile-form__field">
-                    <span>Fuente</span>
-                    <AppSelect
-                      ariaLabel="Fuente"
-                      options={sourceOptions}
-                      value={selectedMobileRow.sourceId}
-                      onChange={(value) => updateIncomeRow(selectedMobileRow.id, { sourceId: value })}
-                    />
-                  </label>
-
-                  <div className="mobile-form__split">
-                    <label className="mobile-form__field">
-                      <span>Moneda</span>
-                      <AppSelect
-                        ariaLabel="Moneda"
-                        options={currencyOptions}
-                        value={selectedMobileRow.currencyCode}
-                        onChange={(value) => updateIncomeRow(selectedMobileRow.id, { currencyCode: value as 'MXN' | 'USD' })}
-                        isSearchable={false}
-                      />
-                    </label>
-
-                    <label className="mobile-form__field">
-                      <span>Monto original</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={selectedMobileRow.amountOriginal}
-                        placeholder="0.00"
-                        onChange={(event) => updateIncomeRow(selectedMobileRow.id, { amountOriginal: event.target.value })}
-                      />
-                    </label>
-                  </div>
-
-                  {selectedMobileRow.currencyCode === 'MXN' ? (
-                    <div className="mobile-income__computed">
-                      <span>Tipo de cambio</span>
-                      <strong>1.00</strong>
-                    </div>
-                  ) : (
-                    <label className="mobile-form__field">
-                      <span>Tipo de cambio a MXN</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="0.000001"
-                        value={selectedMobileRow.fxRateToMxn}
-                        placeholder="1.000000"
-                        onChange={(event) => updateIncomeRow(selectedMobileRow.id, { fxRateToMxn: event.target.value })}
-                      />
-                    </label>
-                  )}
-
-                  <div className="mobile-income__computed">
-                    <span>Monto calculado en MXN</span>
-                    <strong>{formatIncomeMxnValue(selectedMobileRow.amountMxn)}</strong>
-                  </div>
-
-                  <label className="mobile-form__field">
-                    <span>Notas</span>
-                    <textarea
-                      rows={4}
-                      value={selectedMobileRow.notes}
-                      placeholder="Detalle opcional"
-                      onChange={(event) => updateIncomeRow(selectedMobileRow.id, { notes: event.target.value })}
-                    />
-                  </label>
-                </div>
-
-                <div className="mobile-form__actions">
-                  <button
-                    type="button"
-                    className="mobile-form__button mobile-form__button--primary"
-                    onClick={() => {
-                      void persistIncomeRow(selectedMobileRow.id);
-                    }}
-                  >
-                    Guardar
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-form__button"
-                    onClick={() => {
-                      handleRevertRow(selectedMobileRow);
-                    }}
-                  >
-                    {selectedMobileRow.isDraft ? 'Limpiar' : 'Revertir'}
-                  </button>
-                  <button
-                    type="button"
-                    className="mobile-form__button mobile-form__button--danger"
-                    onClick={() => {
-                      void handleDeleteRow(selectedMobileRow);
-                    }}
-                  >
-                    {selectedMobileRow.isDraft ? 'Descartar' : 'Eliminar'}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : (
-          <>
-            {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
-
-            <div className="grid-wrapper grid-wrapper--tall">
-              <DataGrid
-                ref={gridRef}
-                columns={columns}
-                rows={rows}
-                rowHeight={GRID_ROW_HEIGHT}
-                headerRowHeight={GRID_ROW_HEIGHT}
-                rowKeyGetter={(row) => row.id}
-                onRowsChange={handleRowsChange}
-                onCellClick={(args) => {
-                  if (args.column.renderEditCell) {
-                    args.selectCell(true);
-                  }
-                }}
-                onSelectedCellChange={(args) => {
-                  if (args.row && args.column.renderEditCell) {
-                    focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-                  }
-                }}
-                defaultColumnOptions={{ resizable: true }}
-                rowClass={(row) => {
-                  if (row.status === 'saving') return 'row-saving';
-                  if (row.status === 'error') return 'row-error';
-                  if (row.status === 'new') return 'row-new';
-                  if (row.status === 'dirty') return 'row-dirty';
-                  return 'row-saved';
-                }}
-                style={{ blockSize: 500 }}
-              />
-            </div>
-          </>
-        )}
+        <div className="grid-wrapper grid-wrapper--tall">
+          <DataGrid
+            ref={gridRef}
+            columns={columns}
+            rows={rows}
+            rowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={GRID_ROW_HEIGHT}
+            rowKeyGetter={(row) => row.id}
+            onRowsChange={handleRowsChange}
+            onCellClick={(args) => {
+              if (args.column.renderEditCell) {
+                args.selectCell(true);
+              }
+            }}
+            onSelectedCellChange={(args) => {
+              if (args.row && args.column.renderEditCell) {
+                focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+              }
+            }}
+            defaultColumnOptions={{ resizable: true }}
+            rowClass={(row) => {
+              if (row.status === 'saving') return 'row-saving';
+              if (row.status === 'error') return 'row-error';
+              if (row.status === 'new') return 'row-new';
+              if (row.status === 'dirty') return 'row-dirty';
+              return 'row-saved';
+            }}
+            style={{ blockSize: 500 }}
+          />
+        </div>
 
       </section>
     </div>

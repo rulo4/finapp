@@ -12,6 +12,8 @@ const StockBuysPage = lazy(() => import('./pages/StockBuysPage').then((module) =
 const StockSellsPage = lazy(() => import('./pages/StockSellsPage').then((module) => ({ default: module.StockSellsPage })));
 const DividendsPage = lazy(() => import('./pages/DividendsPage').then((module) => ({ default: module.DividendsPage })));
 const CatalogsPage = lazy(() => import('./pages/CatalogsPage').then((module) => ({ default: module.CatalogsPage })));
+const TicketsPage = lazy(() => import('./pages/TicketsPage').then((module) => ({ default: module.TicketsPage })));
+const TicketScanPage = lazy(() => import('./pages/TicketScanPage').then((module) => ({ default: module.TicketScanPage })));
 
 function RouteFallback() {
   return (
@@ -103,6 +105,22 @@ export default function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <CatalogsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/tickets"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <TicketsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/tickets/scan"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <TicketScanPage />
             </Suspense>
           }
         />

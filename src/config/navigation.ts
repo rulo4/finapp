@@ -6,6 +6,7 @@ import {
   faCoins,
   faFolderOpen,
   faHandHoldingDollar,
+  faReceipt,
   faTableList,
   faWallet,
 } from '@fortawesome/free-solid-svg-icons';
@@ -24,5 +25,6 @@ export const navigationItems: readonly NavigationItem[] = [
   { label: 'Compras de acciones', to: '/stocks/buys', icon: faTableList },
   { label: 'Ventas de acciones', to: '/stocks/sells', icon: faHandHoldingDollar },
   { label: 'Dividendos', to: '/dividends', icon: faCoins },
+  { label: 'Tickets', to: '/tickets', icon: faReceipt },
   { label: 'Catálogos', to: '/catalogs', icon: faFolderOpen },
 ];
