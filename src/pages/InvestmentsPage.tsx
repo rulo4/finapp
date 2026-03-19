@@ -50,6 +50,14 @@ type InvestmentGridRow = {
   notes: string;
 };
 
+type InstrumentSummaryRow = {
+  entityId: string;
+  entityName: string;
+  depositsLabel: string;
+  withdrawalsLabel: string;
+  netLabel: string;
+};
+
 const GRID_ROW_HEIGHT = 30;
 const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 96;
@@ -484,6 +492,48 @@ export function InvestmentsPage() {
     };
   }, [rows]);
 
+  const instrumentSummaryRows = useMemo<InstrumentSummaryRow[]>(() => {
+    const summaryByEntity = new Map<string, { entityName: string; deposits: number; withdrawals: number; net: number }>();
+
+    for (const row of rows) {
+      if (row.isDraft || !row.entityId) {
+        continue;
+      }
+
+      const amount = Number(row.amountMxn);
+      if (!Number.isFinite(amount)) {
+        continue;
+      }
+
+      const entityName = entityLabelById.get(row.entityId) ?? 'Sin entidad';
+      const summary = summaryByEntity.get(row.entityId) ?? {
+        entityName,
+        deposits: 0,
+        withdrawals: 0,
+        net: 0,
+      };
+
+      if (amount > 0) {
+        summary.deposits += amount;
+      } else if (amount < 0) {
+        summary.withdrawals += Math.abs(amount);
+      }
+
+      summary.net += amount;
+      summaryByEntity.set(row.entityId, summary);
+    }
+
+    return [...summaryByEntity.entries()]
+      .map(([entityId, summary]) => ({
+        entityId,
+        entityName: summary.entityName,
+        depositsLabel: formatCurrencyTotal(summary.deposits),
+        withdrawalsLabel: formatCurrencyTotal(summary.withdrawals),
+        netLabel: formatCurrencyTotal(summary.net),
+      }))
+      .sort((left, right) => left.entityName.localeCompare(right.entityName, 'es'));
+  }, [entityLabelById, rows]);
+
   const columns = useMemo<readonly Column<InvestmentGridRow>[]>(() => [
     {
       key: 'actions',
@@ -690,6 +740,34 @@ export function InvestmentsPage() {
             style={{ blockSize: 500 }}
           />
         </div>
+
+        {instrumentSummaryRows.length > 0 ? (
+          <div className="finance-panel__summary">
+            <div className="finance-panel__header">
+              <div className="badge-row" aria-label="Resumen por instrumento">
+                <span className="badge">{instrumentSummaryRows.length} instrumentos</span>
+              </div>
+            </div>
+
+            <div className="finance-table finance-table--investments-summary" aria-label="Resumen de abonos, retiros y saldo neto por instrumento">
+              <div className="finance-table__head">
+                <span>Instrumento</span>
+                <span>Abonos</span>
+                <span>Retiros</span>
+                <span>Neto</span>
+              </div>
+
+              {instrumentSummaryRows.map((row) => (
+                <div key={row.entityId} className="finance-table__row">
+                  <span>{row.entityName}</span>
+                  <span>{row.depositsLabel}</span>
+                  <span>{row.withdrawalsLabel}</span>
+                  <span>{row.netLabel}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </section>
     </div>
   );

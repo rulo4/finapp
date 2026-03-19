@@ -1006,6 +1006,17 @@ textarea {
   grid-template-columns: 110px minmax(180px, 1.4fr) minmax(140px, 1fr) minmax(140px, 1fr) 120px;
 }
 
+.finance-table--investments-summary .finance-table__head,
+.finance-table--investments-summary .finance-table__row {
+  grid-template-columns: minmax(180px, 1.4fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr);
+}
+
+.finance-panel__summary {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .rdg {
   --rdg-font-size: 13px;
   --rdg-background-color: #ffffff;

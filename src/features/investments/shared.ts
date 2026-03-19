@@ -11,6 +11,14 @@ export type Broker = {
   name: string;
 };
 
+export type Security = {
+  id: string;
+  ticker: string;
+  company_name: string;
+  exchange_code: string | null;
+  is_active: boolean;
+};
+
 export type InvestmentEntity = {
   id: string;
   name: string;
@@ -82,6 +90,16 @@ export function formatCurrencyTotal(value: number) {
     currency: 'MXN',
     maximumFractionDigits: 2,
   }).format(value);
+}
+
+export function formatSecurityLabel(security: Security) {
+  const exchangeSuffix = security.exchange_code?.trim() ? ` (${security.exchange_code.trim().toUpperCase()})` : '';
+
+  return `${security.ticker}${exchangeSuffix}`;
+}
+
+export function formatSecurityOptionLabel(security: Security) {
+  return `${formatSecurityLabel(security)} · ${security.company_name}`;
 }
 
 export function createLocalId(prefix: string) {
