@@ -1302,20 +1302,6 @@ textarea {
   object-fit: cover;
 }
 
-.ticket-card__placeholder,
-.tickets-preview-frame--empty,
-.tickets-review-empty {
-  display: grid;
-  place-items: center;
-  min-height: 180px;
-  border: 1px dashed #cbd5e1;
-  border-radius: 12px;
-  background: #f8fafc;
-  color: #64748b;
-  text-align: center;
-  padding: 16px;
-}
-
 .ticket-card__content,
 .tickets-scan-panel,
 .tickets-review-panel {

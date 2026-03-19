@@ -107,6 +107,8 @@ npm run supabase:start / stop / reset  # manage local Supabase instance
 ```
 Local Supabase endpoints: API `http://127.0.0.1:54321`, Studio `http://127.0.0.1:54323`.
 
+- Para comandos de Supabase CLI, ejecuta siempre vía `npx supabase ...`; no asumas un binario global `supabase` en PATH.
+
 ## Key Conventions
 - Keep all new pages in `src/pages/` and register them as lazy routes in `App.tsx`.
 - Add navigation entries to `src/config/navigation.ts` (icon from `@fortawesome/free-solid-svg-icons`).

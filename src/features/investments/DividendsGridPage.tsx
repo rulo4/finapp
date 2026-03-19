@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
-import { isIsoDateString } from '../features/shared/isoDate';
+import { InputCellEditor, SelectCellEditor, type SelectOption } from '../shared/gridEditors';
+import { isIsoDateString } from '../shared/isoDate';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
+  type Broker,
+  type InvestmentDateFilterMode,
   commitActiveEditorAndRun,
   createLocalId,
   formatCurrencyTotal,
@@ -14,39 +17,35 @@ import {
   investmentCurrencyOptions,
   isDateWithinRange,
   isErrorFeedback,
-  type InvestmentDateFilterMode,
-  type InvestmentEntity,
-} from '../features/investments/shared';
-import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
+} from './shared';
 
-type InvestmentMovement = {
+type DividendDbRow = {
   id: string;
-  investment_entity_id: string;
   entry_date: string;
+  broker_id: string;
+  ticker: string;
   currency_code: 'MXN' | 'USD';
-  amount_original: number;
+  gross_amount_original: number;
+  tax_withheld_original: number | null;
   fx_rate_to_mxn: number | null;
-  amount_mxn: number;
+  net_amount_mxn: number;
   notes: string | null;
-  investment_entities: { name: string } | { name: string }[] | null;
 };
 
-type InvestmentMovementRow = Omit<InvestmentMovement, 'investment_entities'> & {
-  investment_entities: { name: string } | null;
-};
-
-type InvestmentGridRow = {
+type DividendGridRow = {
   id: string;
   persistedId: string | null;
   isDraft: boolean;
   status: 'new' | 'saved' | 'dirty' | 'error' | 'saving';
   errorMessage: string | null;
   entryDate: string;
-  entityId: string;
+  brokerId: string;
+  ticker: string;
   currencyCode: 'MXN' | 'USD';
-  amountOriginal: string;
+  grossAmountOriginal: string;
+  taxWithheldOriginal: string;
   fxRateToMxn: string;
-  amountMxn: string;
+  netAmountMxn: string;
   notes: string;
 };
 
@@ -54,41 +53,114 @@ const GRID_ROW_HEIGHT = 30;
 const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
-const NOTES_COLUMN_WIDTH = 180;
+const NOTES_COLUMN_WIDTH = 160;
 
-function normalizeInvestmentMovement(row: InvestmentMovement): InvestmentMovementRow {
-  const relation = Array.isArray(row.investment_entities) ? row.investment_entities[0] ?? null : row.investment_entities;
-
-  return {
-    ...row,
-    investment_entities: relation,
-  };
+function normalizeTicker(value: string) {
+  return value.trim().toUpperCase();
 }
 
-function createDraftInvestmentRow(): InvestmentGridRow {
+function createDraftDividendRow(): DividendGridRow {
   return {
-    id: createLocalId('investment-draft'),
+    id: createLocalId('dividend-draft'),
     persistedId: null,
     isDraft: true,
     status: 'new',
     errorMessage: null,
     entryDate: getTodayDate(),
-    entityId: '',
+    brokerId: '',
+    ticker: '',
     currencyCode: 'MXN',
-    amountOriginal: '',
+    grossAmountOriginal: '',
+    taxWithheldOriginal: '0',
     fxRateToMxn: '1',
-    amountMxn: '',
+    netAmountMxn: '',
     notes: '',
   };
 }
 
-function withDraftRow(rows: InvestmentGridRow[]) {
-  const draftRow = rows.find((row) => row.isDraft) ?? createDraftInvestmentRow();
+function withDraftRow(rows: DividendGridRow[]) {
+  const draftRow = rows.find((row) => row.isDraft) ?? createDraftDividendRow();
 
   return [draftRow, ...rows.filter((row) => !row.isDraft)];
 }
 
-function toInvestmentGridRow(row: InvestmentMovementRow): InvestmentGridRow {
+function normalizeDividendGridRow(row: DividendGridRow): DividendGridRow {
+  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
+  const gross = Number(row.grossAmountOriginal);
+  const tax = Number(row.taxWithheldOriginal || '0');
+  const fxRate = Number(fxRateToMxn);
+  const netOriginal = gross - tax;
+
+  return {
+    ...row,
+    ticker: normalizeTicker(row.ticker),
+    fxRateToMxn,
+    taxWithheldOriginal: row.taxWithheldOriginal.trim() ? row.taxWithheldOriginal : '0',
+    netAmountMxn:
+      Number.isFinite(netOriginal) && netOriginal >= 0 && Number.isFinite(fxRate) && fxRate > 0
+        ? formatEditableNumber(Number((netOriginal * fxRate).toFixed(6)))
+        : '',
+  };
+}
+
+function canSaveDraftDividendRow(row: DividendGridRow) {
+  return Boolean(
+    row.entryDate.trim() &&
+      row.brokerId &&
+      normalizeTicker(row.ticker) &&
+      row.grossAmountOriginal.trim() &&
+      (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
+  );
+}
+
+function formatDividendIssuesMessage(row: DividendGridRow) {
+  const issues: string[] = [];
+
+  if (!row.entryDate.trim()) issues.push('captura la fecha');
+  if (!normalizeTicker(row.ticker)) issues.push('captura el ticker');
+  if (!row.brokerId) issues.push('selecciona el broker');
+  if (!row.grossAmountOriginal.trim()) issues.push('captura el bruto');
+  if (row.currencyCode !== 'MXN' && !row.fxRateToMxn.trim()) issues.push('captura el tipo de cambio');
+
+  return issues.length > 0 ? `No se puede guardar la fila: ${issues.join(', ')}.` : 'Revisa la fila.';
+}
+
+function validateDividendRow(row: DividendGridRow) {
+  if (!row.entryDate || !isIsoDateString(row.entryDate)) {
+    return 'usa una fecha valida en formato AAAA-MM-DD';
+  }
+
+  if (!normalizeTicker(row.ticker)) {
+    return 'captura un ticker';
+  }
+
+  if (!row.brokerId) {
+    return 'selecciona un broker';
+  }
+
+  const gross = Number(row.grossAmountOriginal);
+  if (!row.grossAmountOriginal.trim() || !Number.isFinite(gross) || gross < 0) {
+    return 'usa un bruto valido';
+  }
+
+  const tax = Number(row.taxWithheldOriginal || '0');
+  if (!Number.isFinite(tax) || tax < 0) {
+    return 'usa una retención valida';
+  }
+
+  if (tax > gross) {
+    return 'la retención no puede ser mayor al bruto';
+  }
+
+  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
+  if (!Number.isFinite(fxRate) || fxRate <= 0) {
+    return 'usa un tipo de cambio mayor a cero';
+  }
+
+  return null;
+}
+
+function toDividendGridRow(row: DividendDbRow): DividendGridRow {
   return {
     id: row.id,
     persistedId: row.id,
@@ -96,109 +168,25 @@ function toInvestmentGridRow(row: InvestmentMovementRow): InvestmentGridRow {
     status: 'saved',
     errorMessage: null,
     entryDate: row.entry_date,
-    entityId: row.investment_entity_id,
+    brokerId: row.broker_id,
+    ticker: row.ticker,
     currencyCode: row.currency_code,
-    amountOriginal: formatEditableNumber(row.amount_original),
+    grossAmountOriginal: formatEditableNumber(row.gross_amount_original),
+    taxWithheldOriginal: formatEditableNumber(row.tax_withheld_original ?? 0),
     fxRateToMxn: formatEditableNumber(row.currency_code === 'MXN' ? 1 : (row.fx_rate_to_mxn ?? 1)),
-    amountMxn: formatEditableNumber(row.amount_mxn),
+    netAmountMxn: formatEditableNumber(row.net_amount_mxn),
     notes: row.notes ?? '',
   };
 }
 
-function normalizeInvestmentGridRow(row: InvestmentGridRow): InvestmentGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const amountOriginal = Number(row.amountOriginal);
-  const fxRate = Number(fxRateToMxn);
-
-  return {
-    ...row,
-    fxRateToMxn,
-    amountMxn:
-      Number.isFinite(amountOriginal) && amountOriginal !== 0 && Number.isFinite(fxRate) && fxRate > 0
-        ? formatEditableNumber(Number((amountOriginal * fxRate).toFixed(6)))
-        : '',
-  };
-}
-
-function canSaveDraftInvestmentRow(row: InvestmentGridRow) {
-  return Boolean(
-    row.entryDate.trim() &&
-      row.entityId &&
-      row.amountOriginal.trim() &&
-      (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
-  );
-}
-
-function getInvestmentRowIssues(row: InvestmentGridRow) {
-  const issues: string[] = [];
-
-  if (!row.entryDate.trim()) {
-    issues.push('captura la fecha');
-  } else if (!isIsoDateString(row.entryDate)) {
-    issues.push('usa el formato AAAA-MM-DD');
-  }
-
-  if (!row.entityId) {
-    issues.push('selecciona la entidad');
-  }
-
-  const amountOriginal = Number(row.amountOriginal);
-  if (!row.amountOriginal.trim()) {
-    issues.push('captura el monto');
-  } else if (!Number.isFinite(amountOriginal) || amountOriginal === 0) {
-    issues.push('usa un monto distinto de cero');
-  }
-
-  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
-  if (row.currencyCode !== 'MXN' && !row.fxRateToMxn.trim()) {
-    issues.push('captura el tipo de cambio');
-  } else if (!Number.isFinite(fxRate) || fxRate <= 0) {
-    issues.push('usa un tipo de cambio mayor a cero');
-  }
-
-  return issues;
-}
-
-function formatInvestmentIssuesMessage(row: InvestmentGridRow) {
-  const issues = getInvestmentRowIssues(row);
-
-  if (issues.length === 0) {
-    return 'Revisa los valores de la fila antes de guardar.';
-  }
-
-  return `No se puede guardar el movimiento: ${issues.join(', ')}.`;
-}
-
-function validateInvestmentRow(row: InvestmentGridRow) {
-  if (!isIsoDateString(row.entryDate)) {
-    return 'La fecha debe usar el formato AAAA-MM-DD.';
-  }
-
-  if (!row.entityId) {
-    return 'Selecciona una entidad.';
-  }
-
-  const amountOriginal = Number(row.amountOriginal);
-  if (!Number.isFinite(amountOriginal) || amountOriginal === 0) {
-    return 'El monto debe ser distinto de cero.';
-  }
-
-  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
-  if (!Number.isFinite(fxRate) || fxRate <= 0) {
-    return 'El tipo de cambio debe ser mayor a cero.';
-  }
-
-  return null;
-}
-
-export function InvestmentsPage() {
-  const [entities, setEntities] = useState<InvestmentEntity[]>([]);
-  const [rows, setRows] = useState<InvestmentGridRow[]>([]);
+export function DividendsGridPage() {
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [rows, setRows] = useState<DividendGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
-  const rowsRef = useRef<InvestmentGridRow[]>([]);
-  const persistedRowsRef = useRef<Map<string, InvestmentGridRow>>(new Map());
+  const rowsRef = useRef<DividendGridRow[]>([]);
+  const persistedRowsRef = useRef<Map<string, DividendGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
   const autoEditCellRef = useRef<string | null>(null);
 
@@ -217,8 +205,8 @@ export function InvestmentsPage() {
     setIsLoading(true);
 
     let entriesQuery = supabase
-      .from('investment_movements')
-      .select('id, investment_entity_id, entry_date, currency_code, amount_original, fx_rate_to_mxn, amount_mxn, notes, investment_entities(name)')
+      .from('dividend_entries')
+      .select('id, entry_date, broker_id, ticker, currency_code, gross_amount_original, tax_withheld_original, fx_rate_to_mxn, net_amount_mxn, notes')
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -230,32 +218,32 @@ export function InvestmentsPage() {
       entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
     }
 
-    const [{ data: entityData, error: entityError }, { data: entryData, error: entryError }] = await Promise.all([
-      supabase.from('investment_entities').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+    const [{ data: brokerData, error: brokerError }, { data: entryData, error: entryError }] = await Promise.all([
+      supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
       entriesQuery,
     ]);
 
-    if (entityError) {
-      setFeedback(`No fue posible cargar entidades: ${entityError.message}`);
+    if (brokerError) {
+      setFeedback(`No fue posible cargar brokers: ${brokerError.message}`);
       setIsLoading(false);
       return;
     }
 
     if (entryError) {
-      setFeedback(`No fue posible cargar movimientos: ${entryError.message}`);
+      setFeedback(`No fue posible cargar dividendos: ${entryError.message}`);
       setIsLoading(false);
       return;
     }
 
-    const nextEntities = (entityData as InvestmentEntity[]) ?? [];
-    const nextRows = ((entryData as InvestmentMovement[]) ?? []).map(normalizeInvestmentMovement).map(toInvestmentGridRow);
+    const nextBrokers = (brokerData as Broker[]) ?? [];
+    const nextRows = ((entryData as DividendDbRow[]) ?? []).map(toDividendGridRow);
     const loadedRows = withDraftRow(nextRows);
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
-    setEntities(nextEntities);
+    setBrokers(nextBrokers);
     setRows(loadedRows);
-    setFeedback(nextEntities.length > 0 ? null : 'Primero crea al menos una entidad de inversion en Catálogos.');
+    setFeedback(nextBrokers.length > 0 ? null : 'Primero crea al menos un broker en Catálogos.');
     setIsLoading(false);
   }, [activeDateRange.end, activeDateRange.start]);
 
@@ -263,7 +251,7 @@ export function InvestmentsPage() {
     void loadData();
   }, [loadData]);
 
-  function handleRowsChange(nextRows: InvestmentGridRow[], data: { indexes: number[] }) {
+  function handleRowsChange(nextRows: DividendGridRow[], data: { indexes: number[] }) {
     const rowIndex = data.indexes[0] ?? null;
 
     if (rowIndex == null) {
@@ -272,10 +260,10 @@ export function InvestmentsPage() {
       return;
     }
 
-    const normalizedRow = normalizeInvestmentGridRow(nextRows[rowIndex]);
-    const shouldPersist = normalizedRow.isDraft ? canSaveDraftInvestmentRow(normalizedRow) : true;
-    const validationMessage = shouldPersist ? validateInvestmentRow(normalizedRow) : null;
-    const updatedRows: InvestmentGridRow[] = nextRows.map((row, index) => {
+    const normalizedRow = normalizeDividendGridRow(nextRows[rowIndex]);
+    const shouldPersist = normalizedRow.isDraft ? canSaveDraftDividendRow(normalizedRow) : true;
+    const validationMessage = shouldPersist ? validateDividendRow(normalizedRow) : null;
+    const updatedRows: DividendGridRow[] = nextRows.map((row, index) => {
       if (index !== rowIndex) {
         return row;
       }
@@ -293,7 +281,7 @@ export function InvestmentsPage() {
 
   const persistRow = useCallback(async (rowId: string) => {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para guardar movimientos.');
+      setFeedback('Supabase no esta disponible para guardar dividendos.');
       return;
     }
 
@@ -303,10 +291,10 @@ export function InvestmentsPage() {
       return;
     }
 
-    if (row.isDraft && !canSaveDraftInvestmentRow(row)) {
-      const draftErrorMessage = formatInvestmentIssuesMessage(row);
+    if (row.isDraft && !canSaveDraftDividendRow(row)) {
+      const draftErrorMessage = formatDividendIssuesMessage(row);
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: DividendGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: draftErrorMessage } : candidate,
         );
         rowsRef.current = nextRows;
@@ -316,10 +304,10 @@ export function InvestmentsPage() {
       return;
     }
 
-    const validationMessage = validateInvestmentRow(row);
+    const validationMessage = validateDividendRow(row);
     if (validationMessage) {
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: DividendGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: validationMessage } : candidate,
         );
         rowsRef.current = nextRows;
@@ -330,49 +318,53 @@ export function InvestmentsPage() {
     }
 
     setRows((currentRows) => {
-      const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+      const nextRows: DividendGridRow[] = currentRows.map((candidate) =>
         candidate.id === rowId ? { ...candidate, status: 'saving', errorMessage: null } : candidate,
       );
       rowsRef.current = nextRows;
       return nextRows;
     });
 
-    const amountOriginal = Number(row.amountOriginal);
+    const gross = Number(row.grossAmountOriginal);
+    const tax = Number(row.taxWithheldOriginal || '0');
     const fxRateToMxn = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
+    const netOriginal = gross - tax;
     const payload = {
-      investment_entity_id: row.entityId,
       entry_date: row.entryDate,
+      broker_id: row.brokerId,
+      ticker: normalizeTicker(row.ticker),
       currency_code: row.currencyCode,
-      amount_original: Number(amountOriginal.toFixed(6)),
+      gross_amount_original: Number(gross.toFixed(6)),
+      tax_withheld_original: Number(tax.toFixed(6)),
       fx_rate_to_mxn: row.currencyCode === 'MXN' ? null : Number(fxRateToMxn.toFixed(6)),
-      amount_mxn: Number((amountOriginal * fxRateToMxn).toFixed(6)),
+      net_amount_mxn: Number((netOriginal * fxRateToMxn).toFixed(6)),
       notes: row.notes.trim() || null,
     };
 
     const result = row.isDraft
-      ? await supabase.from('investment_movements').insert(payload).select('id').single()
-      : await supabase.from('investment_movements').update(payload).eq('id', row.persistedId);
+      ? await supabase.from('dividend_entries').insert(payload).select('id').single()
+      : await supabase.from('dividend_entries').update(payload).eq('id', row.persistedId);
 
     if (result.error) {
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: DividendGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: result.error.message } : candidate,
         );
         rowsRef.current = nextRows;
         return nextRows;
       });
-      setFeedback(`No fue posible guardar el movimiento: ${result.error.message}`);
+      setFeedback(`No fue posible guardar el dividendo: ${result.error.message}`);
       return;
     }
 
     const persistedId = row.isDraft ? result.data?.id ?? null : row.persistedId;
     if (!persistedId) {
-      setFeedback('No se recibió el identificador del movimiento guardado.');
+      setFeedback('No se recibió el identificador del dividendo guardado.');
       return;
     }
 
-    const savedRow: InvestmentGridRow = {
-      ...normalizeInvestmentGridRow(row),
+    const savedRow: DividendGridRow = {
+      ...normalizeDividendGridRow(row),
       persistedId,
       isDraft: false,
       status: 'saved',
@@ -393,10 +385,10 @@ export function InvestmentsPage() {
       return nextRows;
     });
 
-    setFeedback('Movimiento guardado.');
-  }, [activeDateRange, entities]);
+    setFeedback('Dividendo guardado.');
+  }, [activeDateRange]);
 
-  const handleDeleteRow = useCallback(async (row: InvestmentGridRow) => {
+  const handleDeleteRow = useCallback(async (row: DividendGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
         const nextRows = withDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
@@ -408,17 +400,17 @@ export function InvestmentsPage() {
     }
 
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para eliminar movimientos.');
+      setFeedback('Supabase no esta disponible para eliminar dividendos.');
       return;
     }
 
-    if (!window.confirm('Eliminar este movimiento?')) {
+    if (!window.confirm('Eliminar este dividendo?')) {
       return;
     }
 
-    const { error } = await supabase.from('investment_movements').delete().eq('id', row.persistedId);
+    const { error } = await supabase.from('dividend_entries').delete().eq('id', row.persistedId);
     if (error) {
-      setFeedback(`No fue posible eliminar el movimiento: ${error.message}`);
+      setFeedback(`No fue posible eliminar el dividendo: ${error.message}`);
       return;
     }
 
@@ -428,10 +420,10 @@ export function InvestmentsPage() {
       rowsRef.current = nextRows;
       return nextRows;
     });
-    setFeedback('Movimiento eliminado.');
-  }, [entities]);
+    setFeedback('Dividendo eliminado.');
+  }, []);
 
-  const handleRevertRow = useCallback((row: InvestmentGridRow) => {
+  const handleRevertRow = useCallback((row: DividendGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
         const nextRows = withDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
@@ -453,38 +445,28 @@ export function InvestmentsPage() {
       return nextRows;
     });
     setFeedback('Se restauraron los últimos valores guardados.');
-  }, [entities]);
+  }, []);
 
-  const entityOptions = useMemo<readonly SelectOption[]>(
-    () => [{ value: '', label: 'Entidad' }, ...entities.map((entity) => ({ value: entity.id, label: entity.name }))],
-    [entities],
+  const brokerOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Broker' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
+    [brokers],
   );
-  const entityLabelById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity.name])), [entities]);
-
+  const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
   const visibleSummary = useMemo(() => {
     const visibleRows = rows.filter((row) => !row.isDraft);
-    const deposits = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
-    }, 0);
-    const withdrawals = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) && amount < 0 ? sum + Math.abs(amount) : sum;
-    }, 0);
-    const net = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) ? sum + amount : sum;
+    const totalAmount = visibleRows.reduce((sum, row) => {
+      const rowTotal = Number(row.netAmountMxn);
+
+      return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
     }, 0);
 
     return {
       count: visibleRows.length,
-      depositsLabel: formatCurrencyTotal(deposits),
-      withdrawalsLabel: formatCurrencyTotal(withdrawals),
-      netLabel: formatCurrencyTotal(net),
+      totalLabel: formatCurrencyTotal(totalAmount),
     };
   }, [rows]);
 
-  const columns = useMemo<readonly Column<InvestmentGridRow>[]>(() => [
+  const columns = useMemo<readonly Column<DividendGridRow>[]>(() => [
     {
       key: 'actions',
       name: '',
@@ -554,11 +536,17 @@ export function InvestmentsPage() {
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
     {
-      key: 'entityId',
-      name: 'Entidad',
-      width: 170,
-      renderCell: ({ row }) => entityLabelById.get(row.entityId) ?? '-',
-      renderEditCell: (props) => <SelectCellEditor {...props} options={entityOptions} />,
+      key: 'ticker',
+      name: 'Ticker',
+      width: 108,
+      renderEditCell: (props) => <InputCellEditor {...props} placeholder="AAPL" />,
+    },
+    {
+      key: 'brokerId',
+      name: 'Broker',
+      width: 148,
+      renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
+      renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
     },
     {
       key: 'currencyCode',
@@ -567,10 +555,16 @@ export function InvestmentsPage() {
       renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
     },
     {
-      key: 'amountOriginal',
-      name: 'Monto',
+      key: 'grossAmountOriginal',
+      name: 'Bruto',
       width: AMOUNT_COLUMN_WIDTH,
-      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.000001" placeholder="1000 o -1000" />,
+      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+    },
+    {
+      key: 'taxWithheldOriginal',
+      name: 'Ret.',
+      width: AMOUNT_COLUMN_WIDTH,
+      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
     },
     {
       key: 'fxRateToMxn',
@@ -580,8 +574,8 @@ export function InvestmentsPage() {
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1" />,
     },
     {
-      key: 'amountMxn',
-      name: 'MXN',
+      key: 'netAmountMxn',
+      name: 'MXN neto',
       width: AMOUNT_COLUMN_WIDTH,
       editable: false,
     },
@@ -591,7 +585,7 @@ export function InvestmentsPage() {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
@@ -620,7 +614,7 @@ export function InvestmentsPage() {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar movimientos de inversion por fecha">
+            <div className="income-period-filter" role="group" aria-label="Filtrar dividendos por fecha">
               <button
                 type="button"
                 className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
@@ -648,12 +642,9 @@ export function InvestmentsPage() {
             </div>
           </div>
 
-          <div className="badge-row" aria-label="Resumen de movimientos de inversion visibles">
-            <span className="badge">+ abono / - retiro</span>
+          <div className="badge-row" aria-label="Resumen de dividendos visibles">
             <span className="badge">{visibleSummary.count} regs</span>
-            <span className="badge">Abonos {visibleSummary.depositsLabel}</span>
-            <span className="badge">Retiros {visibleSummary.withdrawalsLabel}</span>
-            <span className="badge">Neto {visibleSummary.netLabel}</span>
+            <span className="badge">{visibleSummary.totalLabel}</span>
           </div>
         </div>
 

@@ -2,9 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
-import { isIsoDateString } from '../features/shared/isoDate';
+import { InputCellEditor, SelectCellEditor, type SelectOption } from '../shared/gridEditors';
+import { isIsoDateString } from '../shared/isoDate';
+import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
+  type Broker,
+  type InvestmentDateFilterMode,
   commitActiveEditorAndRun,
   createLocalId,
   formatCurrencyTotal,
@@ -14,191 +17,195 @@ import {
   investmentCurrencyOptions,
   isDateWithinRange,
   isErrorFeedback,
-  type InvestmentDateFilterMode,
-  type InvestmentEntity,
-} from '../features/investments/shared';
-import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
+} from './shared';
 
-type InvestmentMovement = {
+type TradeKind = 'buy' | 'sell';
+
+type TradeDbRow = {
   id: string;
-  investment_entity_id: string;
-  entry_date: string;
+  trade_date: string;
+  broker_id: string;
+  ticker: string;
   currency_code: 'MXN' | 'USD';
-  amount_original: number;
+  quantity: number;
+  unit_price_original: number;
+  fees_original: number | null;
   fx_rate_to_mxn: number | null;
-  amount_mxn: number;
+  total_amount_mxn: number;
   notes: string | null;
-  investment_entities: { name: string } | { name: string }[] | null;
 };
 
-type InvestmentMovementRow = Omit<InvestmentMovement, 'investment_entities'> & {
-  investment_entities: { name: string } | null;
-};
-
-type InvestmentGridRow = {
+type TradeGridRow = {
   id: string;
   persistedId: string | null;
   isDraft: boolean;
   status: 'new' | 'saved' | 'dirty' | 'error' | 'saving';
   errorMessage: string | null;
-  entryDate: string;
-  entityId: string;
+  tradeDate: string;
+  brokerId: string;
+  ticker: string;
   currencyCode: 'MXN' | 'USD';
-  amountOriginal: string;
+  quantity: string;
+  unitPriceOriginal: string;
+  feesOriginal: string;
   fxRateToMxn: string;
-  amountMxn: string;
+  totalAmountMxn: string;
   notes: string;
 };
 
 const GRID_ROW_HEIGHT = 30;
 const DEFAULT_COLUMN_WIDTH = 108;
-const AMOUNT_COLUMN_WIDTH = 96;
+const AMOUNT_COLUMN_WIDTH = 92;
 const ACTION_COLUMN_WIDTH = 72;
-const NOTES_COLUMN_WIDTH = 180;
+const NOTES_COLUMN_WIDTH = 160;
 
-function normalizeInvestmentMovement(row: InvestmentMovement): InvestmentMovementRow {
-  const relation = Array.isArray(row.investment_entities) ? row.investment_entities[0] ?? null : row.investment_entities;
-
-  return {
-    ...row,
-    investment_entities: relation,
-  };
+function normalizeTicker(value: string) {
+  return value.trim().toUpperCase();
 }
 
-function createDraftInvestmentRow(): InvestmentGridRow {
+function createDraftTradeRow(): TradeGridRow {
   return {
-    id: createLocalId('investment-draft'),
+    id: createLocalId('trade-draft'),
     persistedId: null,
     isDraft: true,
     status: 'new',
     errorMessage: null,
-    entryDate: getTodayDate(),
-    entityId: '',
+    tradeDate: getTodayDate(),
+    brokerId: '',
+    ticker: '',
     currencyCode: 'MXN',
-    amountOriginal: '',
+    quantity: '',
+    unitPriceOriginal: '',
+    feesOriginal: '0',
     fxRateToMxn: '1',
-    amountMxn: '',
+    totalAmountMxn: '',
     notes: '',
   };
 }
 
-function withDraftRow(rows: InvestmentGridRow[]) {
-  const draftRow = rows.find((row) => row.isDraft) ?? createDraftInvestmentRow();
+function withDraftRow(rows: TradeGridRow[]) {
+  const draftRow = rows.find((row) => row.isDraft) ?? createDraftTradeRow();
 
   return [draftRow, ...rows.filter((row) => !row.isDraft)];
 }
 
-function toInvestmentGridRow(row: InvestmentMovementRow): InvestmentGridRow {
+function normalizeTradeGridRow(row: TradeGridRow, kind: TradeKind): TradeGridRow {
+  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
+  const quantity = Number(row.quantity);
+  const unitPrice = Number(row.unitPriceOriginal);
+  const fees = Number(row.feesOriginal || '0');
+  const fxRate = Number(fxRateToMxn);
+  const grossOriginal = quantity * unitPrice;
+  const totalOriginal = kind === 'buy' ? grossOriginal + fees : grossOriginal - fees;
+
+  return {
+    ...row,
+    ticker: normalizeTicker(row.ticker),
+    fxRateToMxn,
+    feesOriginal: row.feesOriginal.trim() ? row.feesOriginal : '0',
+    totalAmountMxn:
+      Number.isFinite(totalOriginal) && totalOriginal >= 0 && Number.isFinite(fxRate) && fxRate > 0
+        ? formatEditableNumber(Number((totalOriginal * fxRate).toFixed(6)))
+        : '',
+  };
+}
+
+function canSaveDraftTradeRow(row: TradeGridRow) {
+  return Boolean(
+    row.tradeDate.trim() &&
+      row.brokerId &&
+      normalizeTicker(row.ticker) &&
+      row.quantity.trim() &&
+      row.unitPriceOriginal.trim() &&
+      (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
+  );
+}
+
+function formatTradeIssuesMessage(row: TradeGridRow) {
+  const issues: string[] = [];
+
+  if (!row.tradeDate.trim()) issues.push('captura la fecha');
+  if (!normalizeTicker(row.ticker)) issues.push('captura el ticker');
+  if (!row.brokerId) issues.push('selecciona el broker');
+  if (!row.quantity.trim()) issues.push('captura la cantidad');
+  if (!row.unitPriceOriginal.trim()) issues.push('captura el precio');
+  if (row.currencyCode !== 'MXN' && !row.fxRateToMxn.trim()) issues.push('captura el tipo de cambio');
+
+  return issues.length > 0 ? `No se puede guardar la fila: ${issues.join(', ')}.` : 'Revisa la fila.';
+}
+
+function validateTradeRow(row: TradeGridRow, kind: TradeKind) {
+  if (!row.tradeDate || !isIsoDateString(row.tradeDate)) {
+    return 'usa una fecha valida en formato AAAA-MM-DD';
+  }
+
+  if (!normalizeTicker(row.ticker)) {
+    return 'captura un ticker';
+  }
+
+  if (!row.brokerId) {
+    return 'selecciona un broker';
+  }
+
+  const quantity = Number(row.quantity);
+  if (!row.quantity.trim() || !Number.isFinite(quantity) || quantity <= 0) {
+    return 'usa una cantidad mayor a cero';
+  }
+
+  const unitPrice = Number(row.unitPriceOriginal);
+  if (!row.unitPriceOriginal.trim() || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    return 'usa un precio mayor a cero';
+  }
+
+  const fees = Number(row.feesOriginal || '0');
+  if (!Number.isFinite(fees) || fees < 0) {
+    return 'usa una comisión valida';
+  }
+
+  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
+  if (!Number.isFinite(fxRate) || fxRate <= 0) {
+    return 'usa un tipo de cambio mayor a cero';
+  }
+
+  const grossOriginal = quantity * unitPrice;
+  const totalOriginal = kind === 'buy' ? grossOriginal + fees : grossOriginal - fees;
+  if (totalOriginal <= 0) {
+    return kind === 'buy' ? 'el total de la compra debe ser mayor a cero' : 'la venta neta debe ser mayor a cero';
+  }
+
+  return null;
+}
+
+function toTradeGridRow(row: TradeDbRow): TradeGridRow {
   return {
     id: row.id,
     persistedId: row.id,
     isDraft: false,
     status: 'saved',
     errorMessage: null,
-    entryDate: row.entry_date,
-    entityId: row.investment_entity_id,
+    tradeDate: row.trade_date,
+    brokerId: row.broker_id,
+    ticker: row.ticker,
     currencyCode: row.currency_code,
-    amountOriginal: formatEditableNumber(row.amount_original),
+    quantity: formatEditableNumber(row.quantity),
+    unitPriceOriginal: formatEditableNumber(row.unit_price_original),
+    feesOriginal: formatEditableNumber(row.fees_original ?? 0),
     fxRateToMxn: formatEditableNumber(row.currency_code === 'MXN' ? 1 : (row.fx_rate_to_mxn ?? 1)),
-    amountMxn: formatEditableNumber(row.amount_mxn),
+    totalAmountMxn: formatEditableNumber(row.total_amount_mxn),
     notes: row.notes ?? '',
   };
 }
 
-function normalizeInvestmentGridRow(row: InvestmentGridRow): InvestmentGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const amountOriginal = Number(row.amountOriginal);
-  const fxRate = Number(fxRateToMxn);
-
-  return {
-    ...row,
-    fxRateToMxn,
-    amountMxn:
-      Number.isFinite(amountOriginal) && amountOriginal !== 0 && Number.isFinite(fxRate) && fxRate > 0
-        ? formatEditableNumber(Number((amountOriginal * fxRate).toFixed(6)))
-        : '',
-  };
-}
-
-function canSaveDraftInvestmentRow(row: InvestmentGridRow) {
-  return Boolean(
-    row.entryDate.trim() &&
-      row.entityId &&
-      row.amountOriginal.trim() &&
-      (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
-  );
-}
-
-function getInvestmentRowIssues(row: InvestmentGridRow) {
-  const issues: string[] = [];
-
-  if (!row.entryDate.trim()) {
-    issues.push('captura la fecha');
-  } else if (!isIsoDateString(row.entryDate)) {
-    issues.push('usa el formato AAAA-MM-DD');
-  }
-
-  if (!row.entityId) {
-    issues.push('selecciona la entidad');
-  }
-
-  const amountOriginal = Number(row.amountOriginal);
-  if (!row.amountOriginal.trim()) {
-    issues.push('captura el monto');
-  } else if (!Number.isFinite(amountOriginal) || amountOriginal === 0) {
-    issues.push('usa un monto distinto de cero');
-  }
-
-  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
-  if (row.currencyCode !== 'MXN' && !row.fxRateToMxn.trim()) {
-    issues.push('captura el tipo de cambio');
-  } else if (!Number.isFinite(fxRate) || fxRate <= 0) {
-    issues.push('usa un tipo de cambio mayor a cero');
-  }
-
-  return issues;
-}
-
-function formatInvestmentIssuesMessage(row: InvestmentGridRow) {
-  const issues = getInvestmentRowIssues(row);
-
-  if (issues.length === 0) {
-    return 'Revisa los valores de la fila antes de guardar.';
-  }
-
-  return `No se puede guardar el movimiento: ${issues.join(', ')}.`;
-}
-
-function validateInvestmentRow(row: InvestmentGridRow) {
-  if (!isIsoDateString(row.entryDate)) {
-    return 'La fecha debe usar el formato AAAA-MM-DD.';
-  }
-
-  if (!row.entityId) {
-    return 'Selecciona una entidad.';
-  }
-
-  const amountOriginal = Number(row.amountOriginal);
-  if (!Number.isFinite(amountOriginal) || amountOriginal === 0) {
-    return 'El monto debe ser distinto de cero.';
-  }
-
-  const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
-  if (!Number.isFinite(fxRate) || fxRate <= 0) {
-    return 'El tipo de cambio debe ser mayor a cero.';
-  }
-
-  return null;
-}
-
-export function InvestmentsPage() {
-  const [entities, setEntities] = useState<InvestmentEntity[]>([]);
-  const [rows, setRows] = useState<InvestmentGridRow[]>([]);
+export function StockTradesPage({ kind }: { kind: TradeKind }) {
+  const tableName = kind === 'buy' ? 'stock_buys' : 'stock_sells';
+  const panelTitle = kind === 'buy' ? 'Compras de acciones' : 'Ventas de acciones';
+  const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [rows, setRows] = useState<TradeGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
-  const rowsRef = useRef<InvestmentGridRow[]>([]);
-  const persistedRowsRef = useRef<Map<string, InvestmentGridRow>>(new Map());
+  const rowsRef = useRef<TradeGridRow[]>([]);
+  const persistedRowsRef = useRef<Map<string, TradeGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
   const autoEditCellRef = useRef<string | null>(null);
 
@@ -217,53 +224,53 @@ export function InvestmentsPage() {
     setIsLoading(true);
 
     let entriesQuery = supabase
-      .from('investment_movements')
-      .select('id, investment_entity_id, entry_date, currency_code, amount_original, fx_rate_to_mxn, amount_mxn, notes, investment_entities(name)')
-      .order('entry_date', { ascending: false })
+      .from(tableName)
+      .select('id, trade_date, broker_id, ticker, currency_code, quantity, unit_price_original, fees_original, fx_rate_to_mxn, total_amount_mxn, notes')
+      .order('trade_date', { ascending: false })
       .order('created_at', { ascending: false });
 
     if (activeDateRange.start) {
-      entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);
+      entriesQuery = entriesQuery.gte('trade_date', activeDateRange.start);
     }
 
     if (activeDateRange.end) {
-      entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
+      entriesQuery = entriesQuery.lte('trade_date', activeDateRange.end);
     }
 
-    const [{ data: entityData, error: entityError }, { data: entryData, error: entryError }] = await Promise.all([
-      supabase.from('investment_entities').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+    const [{ data: brokerData, error: brokerError }, { data: entryData, error: entryError }] = await Promise.all([
+      supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
       entriesQuery,
     ]);
 
-    if (entityError) {
-      setFeedback(`No fue posible cargar entidades: ${entityError.message}`);
+    if (brokerError) {
+      setFeedback(`No fue posible cargar brokers: ${brokerError.message}`);
       setIsLoading(false);
       return;
     }
 
     if (entryError) {
-      setFeedback(`No fue posible cargar movimientos: ${entryError.message}`);
+      setFeedback(`No fue posible cargar ${panelTitle.toLowerCase()}: ${entryError.message}`);
       setIsLoading(false);
       return;
     }
 
-    const nextEntities = (entityData as InvestmentEntity[]) ?? [];
-    const nextRows = ((entryData as InvestmentMovement[]) ?? []).map(normalizeInvestmentMovement).map(toInvestmentGridRow);
+    const nextBrokers = (brokerData as Broker[]) ?? [];
+    const nextRows = ((entryData as TradeDbRow[]) ?? []).map(toTradeGridRow);
     const loadedRows = withDraftRow(nextRows);
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
-    setEntities(nextEntities);
+    setBrokers(nextBrokers);
     setRows(loadedRows);
-    setFeedback(nextEntities.length > 0 ? null : 'Primero crea al menos una entidad de inversion en Catálogos.');
+    setFeedback(nextBrokers.length > 0 ? null : 'Primero crea al menos un broker en Catálogos.');
     setIsLoading(false);
-  }, [activeDateRange.end, activeDateRange.start]);
+  }, [activeDateRange.end, activeDateRange.start, panelTitle, tableName]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
 
-  function handleRowsChange(nextRows: InvestmentGridRow[], data: { indexes: number[] }) {
+  function handleRowsChange(nextRows: TradeGridRow[], data: { indexes: number[] }) {
     const rowIndex = data.indexes[0] ?? null;
 
     if (rowIndex == null) {
@@ -272,10 +279,10 @@ export function InvestmentsPage() {
       return;
     }
 
-    const normalizedRow = normalizeInvestmentGridRow(nextRows[rowIndex]);
-    const shouldPersist = normalizedRow.isDraft ? canSaveDraftInvestmentRow(normalizedRow) : true;
-    const validationMessage = shouldPersist ? validateInvestmentRow(normalizedRow) : null;
-    const updatedRows: InvestmentGridRow[] = nextRows.map((row, index) => {
+    const normalizedRow = normalizeTradeGridRow(nextRows[rowIndex], kind);
+    const shouldPersist = normalizedRow.isDraft ? canSaveDraftTradeRow(normalizedRow) : true;
+    const validationMessage = shouldPersist ? validateTradeRow(normalizedRow, kind) : null;
+    const updatedRows: TradeGridRow[] = nextRows.map((row, index) => {
       if (index !== rowIndex) {
         return row;
       }
@@ -298,15 +305,16 @@ export function InvestmentsPage() {
     }
 
     const row = rowsRef.current.find((candidate) => candidate.id === rowId);
+
     if (!row) {
       setFeedback('No se encontró la fila que intentas guardar. Intenta de nuevo.');
       return;
     }
 
-    if (row.isDraft && !canSaveDraftInvestmentRow(row)) {
-      const draftErrorMessage = formatInvestmentIssuesMessage(row);
+    if (row.isDraft && !canSaveDraftTradeRow(row)) {
+      const draftErrorMessage = formatTradeIssuesMessage(row);
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: TradeGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: draftErrorMessage } : candidate,
         );
         rowsRef.current = nextRows;
@@ -316,10 +324,10 @@ export function InvestmentsPage() {
       return;
     }
 
-    const validationMessage = validateInvestmentRow(row);
+    const validationMessage = validateTradeRow(row, kind);
     if (validationMessage) {
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: TradeGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: validationMessage } : candidate,
         );
         rowsRef.current = nextRows;
@@ -330,32 +338,39 @@ export function InvestmentsPage() {
     }
 
     setRows((currentRows) => {
-      const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+      const nextRows: TradeGridRow[] = currentRows.map((candidate) =>
         candidate.id === rowId ? { ...candidate, status: 'saving', errorMessage: null } : candidate,
       );
       rowsRef.current = nextRows;
       return nextRows;
     });
 
-    const amountOriginal = Number(row.amountOriginal);
+    const quantity = Number(row.quantity);
+    const unitPrice = Number(row.unitPriceOriginal);
+    const fees = Number(row.feesOriginal || '0');
     const fxRateToMxn = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
+    const grossOriginal = quantity * unitPrice;
+    const totalOriginal = kind === 'buy' ? grossOriginal + fees : grossOriginal - fees;
     const payload = {
-      investment_entity_id: row.entityId,
-      entry_date: row.entryDate,
+      trade_date: row.tradeDate,
+      broker_id: row.brokerId,
+      ticker: normalizeTicker(row.ticker),
       currency_code: row.currencyCode,
-      amount_original: Number(amountOriginal.toFixed(6)),
+      quantity: Number(quantity.toFixed(6)),
+      unit_price_original: Number(unitPrice.toFixed(6)),
+      fees_original: Number(fees.toFixed(6)),
       fx_rate_to_mxn: row.currencyCode === 'MXN' ? null : Number(fxRateToMxn.toFixed(6)),
-      amount_mxn: Number((amountOriginal * fxRateToMxn).toFixed(6)),
+      total_amount_mxn: Number((totalOriginal * fxRateToMxn).toFixed(6)),
       notes: row.notes.trim() || null,
     };
 
     const result = row.isDraft
-      ? await supabase.from('investment_movements').insert(payload).select('id').single()
-      : await supabase.from('investment_movements').update(payload).eq('id', row.persistedId);
+      ? await supabase.from(tableName).insert(payload).select('id').single()
+      : await supabase.from(tableName).update(payload).eq('id', row.persistedId);
 
     if (result.error) {
       setRows((currentRows) => {
-        const nextRows: InvestmentGridRow[] = currentRows.map((candidate) =>
+        const nextRows: TradeGridRow[] = currentRows.map((candidate) =>
           candidate.id === rowId ? { ...candidate, status: 'error', errorMessage: result.error.message } : candidate,
         );
         rowsRef.current = nextRows;
@@ -371,32 +386,32 @@ export function InvestmentsPage() {
       return;
     }
 
-    const savedRow: InvestmentGridRow = {
-      ...normalizeInvestmentGridRow(row),
+    const savedRow: TradeGridRow = {
+      ...normalizeTradeGridRow(row, kind),
       persistedId,
       isDraft: false,
       status: 'saved',
       errorMessage: null,
     };
 
-    if (isDateWithinRange(savedRow.entryDate, activeDateRange)) {
+    if (isDateWithinRange(savedRow.tradeDate, activeDateRange)) {
       persistedRowsRef.current.set(rowId, savedRow);
     } else {
       persistedRowsRef.current.delete(rowId);
     }
 
     setRows((currentRows) => {
-      const nextRows = !isDateWithinRange(savedRow.entryDate, activeDateRange)
+      const nextRows = !isDateWithinRange(savedRow.tradeDate, activeDateRange)
         ? withDraftRow(currentRows.filter((candidate) => candidate.id !== rowId))
         : withDraftRow(currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate)));
       rowsRef.current = nextRows;
       return nextRows;
     });
 
-    setFeedback('Movimiento guardado.');
-  }, [activeDateRange, entities]);
+    setFeedback(kind === 'buy' ? 'Compra guardada.' : 'Venta guardada.');
+  }, [activeDateRange, kind, tableName]);
 
-  const handleDeleteRow = useCallback(async (row: InvestmentGridRow) => {
+  const handleDeleteRow = useCallback(async (row: TradeGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
         const nextRows = withDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
@@ -412,11 +427,11 @@ export function InvestmentsPage() {
       return;
     }
 
-    if (!window.confirm('Eliminar este movimiento?')) {
+    if (!window.confirm(kind === 'buy' ? 'Eliminar esta compra?' : 'Eliminar esta venta?')) {
       return;
     }
 
-    const { error } = await supabase.from('investment_movements').delete().eq('id', row.persistedId);
+    const { error } = await supabase.from(tableName).delete().eq('id', row.persistedId);
     if (error) {
       setFeedback(`No fue posible eliminar el movimiento: ${error.message}`);
       return;
@@ -428,10 +443,10 @@ export function InvestmentsPage() {
       rowsRef.current = nextRows;
       return nextRows;
     });
-    setFeedback('Movimiento eliminado.');
-  }, [entities]);
+    setFeedback(kind === 'buy' ? 'Compra eliminada.' : 'Venta eliminada.');
+  }, [kind, tableName]);
 
-  const handleRevertRow = useCallback((row: InvestmentGridRow) => {
+  const handleRevertRow = useCallback((row: TradeGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
         const nextRows = withDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
@@ -453,38 +468,28 @@ export function InvestmentsPage() {
       return nextRows;
     });
     setFeedback('Se restauraron los últimos valores guardados.');
-  }, [entities]);
+  }, []);
 
-  const entityOptions = useMemo<readonly SelectOption[]>(
-    () => [{ value: '', label: 'Entidad' }, ...entities.map((entity) => ({ value: entity.id, label: entity.name }))],
-    [entities],
+  const brokerOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Broker' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
+    [brokers],
   );
-  const entityLabelById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity.name])), [entities]);
-
+  const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
   const visibleSummary = useMemo(() => {
     const visibleRows = rows.filter((row) => !row.isDraft);
-    const deposits = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
-    }, 0);
-    const withdrawals = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) && amount < 0 ? sum + Math.abs(amount) : sum;
-    }, 0);
-    const net = visibleRows.reduce((sum, row) => {
-      const amount = Number(row.amountMxn);
-      return Number.isFinite(amount) ? sum + amount : sum;
+    const totalAmount = visibleRows.reduce((sum, row) => {
+      const rowTotal = Number(row.totalAmountMxn);
+
+      return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
     }, 0);
 
     return {
       count: visibleRows.length,
-      depositsLabel: formatCurrencyTotal(deposits),
-      withdrawalsLabel: formatCurrencyTotal(withdrawals),
-      netLabel: formatCurrencyTotal(net),
+      totalLabel: formatCurrencyTotal(totalAmount),
     };
   }, [rows]);
 
-  const columns = useMemo<readonly Column<InvestmentGridRow>[]>(() => [
+  const columns = useMemo<readonly Column<TradeGridRow>[]>(() => [
     {
       key: 'actions',
       name: '',
@@ -548,17 +553,23 @@ export function InvestmentsPage() {
       },
     },
     {
-      key: 'entryDate',
+      key: 'tradeDate',
       name: 'Fecha',
       width: DEFAULT_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
     {
-      key: 'entityId',
-      name: 'Entidad',
-      width: 170,
-      renderCell: ({ row }) => entityLabelById.get(row.entityId) ?? '-',
-      renderEditCell: (props) => <SelectCellEditor {...props} options={entityOptions} />,
+      key: 'ticker',
+      name: 'Ticker',
+      width: 108,
+      renderEditCell: (props) => <InputCellEditor {...props} placeholder="AAPL" />,
+    },
+    {
+      key: 'brokerId',
+      name: 'Broker',
+      width: 148,
+      renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
+      renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
     },
     {
       key: 'currencyCode',
@@ -567,10 +578,22 @@ export function InvestmentsPage() {
       renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
     },
     {
-      key: 'amountOriginal',
-      name: 'Monto',
+      key: 'quantity',
+      name: 'Cantidad',
       width: AMOUNT_COLUMN_WIDTH,
-      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.000001" placeholder="1000 o -1000" />,
+      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+    },
+    {
+      key: 'unitPriceOriginal',
+      name: 'Precio',
+      width: AMOUNT_COLUMN_WIDTH,
+      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+    },
+    {
+      key: 'feesOriginal',
+      name: 'Comisión',
+      width: AMOUNT_COLUMN_WIDTH,
+      renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
     },
     {
       key: 'fxRateToMxn',
@@ -580,7 +603,7 @@ export function InvestmentsPage() {
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1" />,
     },
     {
-      key: 'amountMxn',
+      key: 'totalAmountMxn',
       name: 'MXN',
       width: AMOUNT_COLUMN_WIDTH,
       editable: false,
@@ -591,7 +614,7 @@ export function InvestmentsPage() {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
@@ -620,7 +643,7 @@ export function InvestmentsPage() {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar movimientos de inversion por fecha">
+            <div className="income-period-filter" role="group" aria-label={`Filtrar ${panelTitle.toLowerCase()} por fecha`}>
               <button
                 type="button"
                 className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
@@ -648,12 +671,9 @@ export function InvestmentsPage() {
             </div>
           </div>
 
-          <div className="badge-row" aria-label="Resumen de movimientos de inversion visibles">
-            <span className="badge">+ abono / - retiro</span>
+          <div className="badge-row" aria-label={`Resumen de ${panelTitle.toLowerCase()} visibles`}>
             <span className="badge">{visibleSummary.count} regs</span>
-            <span className="badge">Abonos {visibleSummary.depositsLabel}</span>
-            <span className="badge">Retiros {visibleSummary.withdrawalsLabel}</span>
-            <span className="badge">Neto {visibleSummary.netLabel}</span>
+            <span className="badge">{visibleSummary.totalLabel}</span>
           </div>
         </div>
 

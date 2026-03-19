@@ -1,9 +1,7 @@
-import { SampleGrid } from '../features/shared/sampleGrid';
+import { StockTradesPage } from '../features/investments/StockTradesPage';
 
 export function StockBuysPage() {
   return (
-    <div className="page">
-      <SampleGrid primaryLabel="Ticker" />
-    </div>
+    <StockTradesPage kind="buy" />
   );
 }

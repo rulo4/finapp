@@ -1,9 +1,7 @@
-import { SampleGrid } from '../features/shared/sampleGrid';
+import { DividendsGridPage } from '../features/investments/DividendsGridPage';
 
 export function DividendsPage() {
   return (
-    <div className="page">
-      <SampleGrid primaryLabel="Ticker" />
-    </div>
+    <DividendsGridPage />
   );
 }
