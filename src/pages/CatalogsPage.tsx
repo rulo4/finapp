@@ -5,22 +5,32 @@ import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
-type InstrumentType = 'cash' | 'debit_card' | 'credit_card';
+type PaymentInstrumentType = 'cash' | 'debit_card' | 'credit_card';
+type SecurityInstrumentType = 'stock' | 'etf' | 'fibra' | 'reit' | 'adr' | 'fund' | 'other';
+type CatalogKind = 'basic' | 'payment_instruments' | 'securities';
 
 type CatalogConfig = {
   key: string;
   label: string;
   description: string;
-  requiresInstrumentType?: boolean;
+  kind: CatalogKind;
 };
 
 type CatalogDbRow = {
   id: string;
-  name: string;
-  description: string | null;
+  name?: string | null;
+  description?: string | null;
   is_active: boolean;
-  notes: string | null;
-  instrument_type?: InstrumentType;
+  notes?: string | null;
+  instrument_type?: PaymentInstrumentType | SecurityInstrumentType | null;
+  ticker?: string | null;
+  company_name?: string | null;
+  sector?: string | null;
+  industry?: string | null;
+  exchange_code?: string | null;
+  country_code?: string | null;
+  currency_code?: 'MXN' | 'USD' | null;
+  website_url?: string | null;
   created_at: string;
 };
 
@@ -34,12 +44,36 @@ type CatalogGridRow = {
   description: string;
   instrumentType: string;
   isActive: string;
+  ticker: string;
+  companyName: string;
+  sector: string;
+  industry: string;
+  exchangeCode: string;
+  countryCode: string;
+  currencyCode: string;
+  websiteUrl: string;
+  notes: string;
 };
 
-const instrumentTypeOptions: readonly SelectOption[] = [
+const paymentInstrumentTypeOptions: readonly SelectOption[] = [
   { value: 'cash', label: 'cash' },
   { value: 'debit_card', label: 'debit_card' },
   { value: 'credit_card', label: 'credit_card' },
+];
+
+const securityInstrumentTypeOptions: readonly SelectOption[] = [
+  { value: 'stock', label: 'stock' },
+  { value: 'etf', label: 'etf' },
+  { value: 'fibra', label: 'fibra' },
+  { value: 'reit', label: 'reit' },
+  { value: 'adr', label: 'adr' },
+  { value: 'fund', label: 'fund' },
+  { value: 'other', label: 'other' },
+];
+
+const currencyOptions: readonly SelectOption[] = [
+  { value: 'MXN', label: 'MXN' },
+  { value: 'USD', label: 'USD' },
 ];
 
 const activeOptions: readonly SelectOption[] = [
@@ -52,37 +86,49 @@ const catalogConfigs: CatalogConfig[] = [
     key: 'expense_categories',
     label: 'Categorias de gasto',
     description: 'Clasifica egresos recurrentes y operativos.',
+    kind: 'basic',
   },
   {
     key: 'income_sources',
     label: 'Fuentes de ingreso',
     description: 'Define de donde proviene cada ingreso capturado.',
+    kind: 'basic',
   },
   {
     key: 'payment_instruments',
     label: 'Instrumentos de pago',
     description: 'Administra efectivo, debito y credito para egresos.',
-    requiresInstrumentType: true,
+    kind: 'payment_instruments',
   },
   {
     key: 'stores',
     label: 'Tiendas',
     description: 'Catalogo de comercios asociados a consumos y compras.',
+    kind: 'basic',
   },
   {
     key: 'unit_of_measures',
     label: 'Unidades de medida',
     description: 'Define unidades reutilizables para capturar egresos sin texto libre.',
+    kind: 'basic',
   },
   {
     key: 'brokers',
     label: 'Brokers',
     description: 'Intermediarios para operaciones de inversion.',
+    kind: 'basic',
   },
   {
     key: 'investment_entities',
     label: 'Entidades de inversion',
-    description: 'Empresas, fibras o vehiculos de inversion relacionados.',
+    description: 'Vehículos no bursátiles usados en inversiones de ledger.',
+    kind: 'basic',
+  },
+  {
+    key: 'securities',
+    label: 'Valores bursátiles',
+    description: 'Catálogo maestro para compras, ventas y dividendos.',
+    kind: 'securities',
   },
 ];
 
@@ -95,7 +141,20 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createDraftCatalogRow(requiresInstrumentType: boolean): CatalogGridRow {
+function normalizeCatalogGridRow(row: CatalogGridRow, kind: CatalogKind): CatalogGridRow {
+  if (kind !== 'securities') {
+    return row;
+  }
+
+  return {
+    ...row,
+    ticker: row.ticker.trim().toUpperCase(),
+    exchangeCode: row.exchangeCode.trim().toUpperCase(),
+    countryCode: row.countryCode.trim().toUpperCase(),
+  };
+}
+
+function createDraftCatalogRow(config: CatalogConfig): CatalogGridRow {
   return {
     id: createLocalId('catalog-draft'),
     persistedId: null,
@@ -104,36 +163,92 @@ function createDraftCatalogRow(requiresInstrumentType: boolean): CatalogGridRow 
     errorMessage: null,
     name: '',
     description: '',
-    instrumentType: requiresInstrumentType ? 'cash' : '',
+    instrumentType: config.kind === 'payment_instruments' ? 'cash' : config.kind === 'securities' ? 'stock' : '',
     isActive: 'true',
+    ticker: '',
+    companyName: '',
+    sector: '',
+    industry: '',
+    exchangeCode: '',
+    countryCode: '',
+    currencyCode: config.kind === 'securities' ? 'USD' : '',
+    websiteUrl: '',
+    notes: '',
   };
 }
 
-function toCatalogGridRow(row: CatalogDbRow, requiresInstrumentType: boolean): CatalogGridRow {
+function toCatalogGridRow(row: CatalogDbRow, config: CatalogConfig): CatalogGridRow {
   return {
     id: row.id,
     persistedId: row.id,
     isDraft: false,
     status: 'saved',
     errorMessage: null,
-    name: row.name,
+    name: row.name ?? '',
     description: row.description ?? '',
-    instrumentType: requiresInstrumentType ? row.instrument_type ?? 'cash' : '',
+    instrumentType: row.instrument_type ?? (config.kind === 'payment_instruments' ? 'cash' : config.kind === 'securities' ? 'stock' : ''),
     isActive: row.is_active ? 'true' : 'false',
+    ticker: row.ticker ?? '',
+    companyName: row.company_name ?? '',
+    sector: row.sector ?? '',
+    industry: row.industry ?? '',
+    exchangeCode: row.exchange_code ?? '',
+    countryCode: row.country_code ?? '',
+    currencyCode: row.currency_code ?? (config.kind === 'securities' ? 'USD' : ''),
+    websiteUrl: row.website_url ?? '',
+    notes: row.notes ?? '',
   };
 }
 
-function canSaveDraftCatalogRow(row: CatalogGridRow, requiresInstrumentType: boolean) {
-  return Boolean(row.name.trim() && (!requiresInstrumentType || row.instrumentType));
-}
-
-function validateCatalogRow(row: CatalogGridRow, requiresInstrumentType: boolean) {
-  if (!row.name.trim()) {
-    return 'El nombre es obligatorio.';
+function canSaveDraftCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
+  if (config.kind === 'securities') {
+    return Boolean(row.ticker.trim() && row.companyName.trim() && row.instrumentType && row.currencyCode);
   }
 
-  if (requiresInstrumentType && !row.instrumentType) {
-    return 'Selecciona el tipo de instrumento.';
+  if (config.kind === 'payment_instruments') {
+    return Boolean(row.name.trim() && row.instrumentType);
+  }
+
+  return Boolean(row.name.trim());
+}
+
+function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
+  if (config.kind === 'securities') {
+    if (!row.ticker.trim()) {
+      return 'El ticker es obligatorio.';
+    }
+
+    if (!row.companyName.trim()) {
+      return 'El nombre de la empresa es obligatorio.';
+    }
+
+    if (!row.instrumentType) {
+      return 'Selecciona el tipo de instrumento.';
+    }
+
+    if (row.currencyCode !== 'MXN' && row.currencyCode !== 'USD') {
+      return 'Selecciona una moneda valida.';
+    }
+
+    if (row.websiteUrl.trim()) {
+      try {
+        const parsed = new URL(row.websiteUrl.trim());
+
+        if (!/^https?:$/i.test(parsed.protocol)) {
+          return 'La URL debe iniciar con http:// o https://.';
+        }
+      } catch {
+        return 'La URL del sitio no es valida.';
+      }
+    }
+  } else {
+    if (!row.name.trim()) {
+      return 'El nombre es obligatorio.';
+    }
+
+    if (config.kind === 'payment_instruments' && !row.instrumentType) {
+      return 'Selecciona el tipo de instrumento.';
+    }
   }
 
   if (row.isActive !== 'true' && row.isActive !== 'false') {
@@ -143,15 +258,17 @@ function validateCatalogRow(row: CatalogGridRow, requiresInstrumentType: boolean
   return null;
 }
 
-function formatCatalogIssuesMessage(row: CatalogGridRow, requiresInstrumentType: boolean) {
+function formatCatalogIssuesMessage(row: CatalogGridRow, config: CatalogConfig) {
   const issues: string[] = [];
 
-  if (!row.name.trim()) {
-    issues.push('captura el nombre');
-  }
-
-  if (requiresInstrumentType && !row.instrumentType) {
-    issues.push('selecciona el tipo de instrumento');
+  if (config.kind === 'securities') {
+    if (!row.ticker.trim()) issues.push('captura el ticker');
+    if (!row.companyName.trim()) issues.push('captura la empresa');
+    if (!row.instrumentType) issues.push('selecciona el tipo');
+    if (!row.currencyCode) issues.push('selecciona la moneda');
+  } else {
+    if (!row.name.trim()) issues.push('captura el nombre');
+    if (config.kind === 'payment_instruments' && !row.instrumentType) issues.push('selecciona el tipo de instrumento');
   }
 
   if (issues.length === 0) {
@@ -192,10 +309,8 @@ export function CatalogsPage() {
     setIsLoading(true);
     setErrorMessage(null);
 
-    const { data, error } = await supabase
-      .from(selectedCatalog.key)
-      .select('*')
-      .order('name', { ascending: true });
+    const orderColumn = selectedCatalog.kind === 'securities' ? 'ticker' : 'name';
+    const { data, error } = await supabase.from(selectedCatalog.key).select('*').order(orderColumn, { ascending: true });
 
     if (error) {
       setRows([]);
@@ -205,8 +320,8 @@ export function CatalogsPage() {
       return;
     }
 
-    const nextRows = ((data as CatalogDbRow[]) ?? []).map((row) => toCatalogGridRow(row, Boolean(selectedCatalog.requiresInstrumentType)));
-    const loadedRows = [createDraftCatalogRow(Boolean(selectedCatalog.requiresInstrumentType)), ...nextRows];
+    const nextRows = ((data as CatalogDbRow[]) ?? []).map((row) => toCatalogGridRow(row, selectedCatalog));
+    const loadedRows = [createDraftCatalogRow(selectedCatalog), ...nextRows];
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
@@ -247,10 +362,8 @@ export function CatalogsPage() {
         return;
       }
 
-      const requiresInstrumentType = Boolean(selectedCatalog.requiresInstrumentType);
-
-      if (row.isDraft && !canSaveDraftCatalogRow(row, requiresInstrumentType)) {
-        const draftErrorMessage = formatCatalogIssuesMessage(row, requiresInstrumentType);
+      if (row.isDraft && !canSaveDraftCatalogRow(row, selectedCatalog)) {
+        const draftErrorMessage = formatCatalogIssuesMessage(row, selectedCatalog);
 
         setRows((currentRows) => {
           const nextRows: CatalogGridRow[] = currentRows.map((candidate) =>
@@ -263,7 +376,7 @@ export function CatalogsPage() {
         return;
       }
 
-      const validationMessage = validateCatalogRow(row, requiresInstrumentType);
+      const validationMessage = validateCatalogRow(row, selectedCatalog);
 
       if (validationMessage) {
         setRows((currentRows) => {
@@ -286,14 +399,34 @@ export function CatalogsPage() {
       });
       setErrorMessage(null);
 
-      const payload: Record<string, string | boolean | null> = {
-        name: row.name.trim(),
-        description: row.description.trim() || null,
-        is_active: row.isActive === 'true',
-      };
+      const normalizedRow = normalizeCatalogGridRow(row, selectedCatalog.kind);
+      let payload: Record<string, string | boolean | null>;
 
-      if (requiresInstrumentType) {
-        payload.instrument_type = row.instrumentType as InstrumentType;
+      if (selectedCatalog.kind === 'securities') {
+        payload = {
+          ticker: normalizedRow.ticker,
+          company_name: normalizedRow.companyName.trim(),
+          sector: normalizedRow.sector.trim() || null,
+          industry: normalizedRow.industry.trim() || null,
+          exchange_code: normalizedRow.exchangeCode || null,
+          instrument_type: normalizedRow.instrumentType,
+          country_code: normalizedRow.countryCode || null,
+          currency_code: normalizedRow.currencyCode,
+          website_url: normalizedRow.websiteUrl.trim() || null,
+          is_active: normalizedRow.isActive === 'true',
+          notes: normalizedRow.notes.trim() || null,
+        };
+      } else {
+        payload = {
+          name: normalizedRow.name.trim(),
+          description: normalizedRow.description.trim() || null,
+          is_active: normalizedRow.isActive === 'true',
+          notes: normalizedRow.notes.trim() || null,
+        };
+
+        if (selectedCatalog.kind === 'payment_instruments') {
+          payload.instrument_type = normalizedRow.instrumentType as PaymentInstrumentType;
+        }
       }
 
       const result = row.isDraft
@@ -320,7 +453,7 @@ export function CatalogsPage() {
   const handleDeleteRow = useCallback(
     async (row: CatalogGridRow) => {
       if (row.isDraft) {
-        const nextRows = [createDraftCatalogRow(Boolean(selectedCatalog.requiresInstrumentType)), ...rowsRef.current.filter((candidate) => !candidate.isDraft)];
+        const nextRows = [createDraftCatalogRow(selectedCatalog), ...rowsRef.current.filter((candidate) => !candidate.isDraft)];
         rowsRef.current = nextRows;
         setRows(nextRows);
         setErrorMessage(null);
@@ -351,7 +484,7 @@ export function CatalogsPage() {
   const handleRevertRow = useCallback(
     (row: CatalogGridRow) => {
       if (row.isDraft) {
-        const nextRows = [createDraftCatalogRow(Boolean(selectedCatalog.requiresInstrumentType)), ...rowsRef.current.filter((candidate) => !candidate.isDraft)];
+        const nextRows = [createDraftCatalogRow(selectedCatalog), ...rowsRef.current.filter((candidate) => !candidate.isDraft)];
         rowsRef.current = nextRows;
         setRows(nextRows);
         setErrorMessage(null);
@@ -383,8 +516,8 @@ export function CatalogsPage() {
       return;
     }
 
-    const editedRow = nextRows[rowIndex];
-    const validationMessage = editedRow.isDraft ? null : validateCatalogRow(editedRow, Boolean(selectedCatalog.requiresInstrumentType));
+    const editedRow = normalizeCatalogGridRow(nextRows[rowIndex], selectedCatalog.kind);
+    const validationMessage = editedRow.isDraft ? null : validateCatalogRow(editedRow, selectedCatalog);
     const updatedRows: CatalogGridRow[] = nextRows.map((row, index) => {
       if (index !== rowIndex) {
         return row;
@@ -422,70 +555,154 @@ export function CatalogsPage() {
   }
 
   const columns = useMemo<readonly Column<CatalogGridRow>[]>(() => {
-    const baseColumns: Column<CatalogGridRow>[] = [
-      {
-        key: 'actions',
-        name: '',
-        width: 78,
-        frozen: true,
-        editable: false,
-        renderCell: ({ row }) => {
-          const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
-          const actionCount = showPrimaryActions ? 2 : 1;
+    const actionColumn: Column<CatalogGridRow> = {
+      key: 'actions',
+      name: '',
+      width: 78,
+      frozen: true,
+      editable: false,
+      renderCell: ({ row }) => {
+        const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
+        const actionCount = showPrimaryActions ? 2 : 1;
 
-          return (
-            <div className={`grid-actions grid-actions--${actionCount}`}>
-              {showPrimaryActions ? (
-                <>
-                  <button
-                    type="button"
-                    className="grid-action grid-action--save"
-                    title="Guardar"
-                    aria-label="Guardar"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      commitActiveEditorAndRun(() => {
-                        void persistCatalogRow(row.id);
-                      });
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faFloppyDisk} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
-                    title={row.isDraft ? 'Limpiar' : 'Deshacer'}
-                    aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleRevertRow(row);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
-                  </button>
-                </>
-              ) : null}
-              {!showPrimaryActions ? (
+        return (
+          <div className={`grid-actions grid-actions--${actionCount}`}>
+            {showPrimaryActions ? (
+              <>
                 <button
                   type="button"
-                  className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
-                  title={row.isDraft ? 'Limpiar' : 'Eliminar'}
-                  aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                  className="grid-action grid-action--save"
+                  title="Guardar"
+                  aria-label="Guardar"
                   onClick={(event) => {
                     event.preventDefault();
                     event.stopPropagation();
-                    void handleDeleteRow(row);
+                    commitActiveEditorAndRun(() => {
+                      void persistCatalogRow(row.id);
+                    });
                   }}
                 >
-                  <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
+                  <FontAwesomeIcon icon={faFloppyDisk} />
                 </button>
-              ) : null}
-            </div>
-          );
-        },
+                <button
+                  type="button"
+                  className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
+                  title={row.isDraft ? 'Limpiar' : 'Deshacer'}
+                  aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    handleRevertRow(row);
+                  }}
+                >
+                  <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
+                </button>
+              </>
+            ) : null}
+            {!showPrimaryActions ? (
+              <button
+                type="button"
+                className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
+                title={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  void handleDeleteRow(row);
+                }}
+              >
+                <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
+              </button>
+            ) : null}
+          </div>
+        );
       },
+    };
+
+    if (selectedCatalog.kind === 'securities') {
+      return [
+        actionColumn,
+        {
+          key: 'ticker',
+          name: 'Ticker',
+          width: 96,
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="AAPL" />,
+        },
+        {
+          key: 'companyName',
+          name: 'Empresa',
+          width: 180,
+          renderCell: ({ row }) => row.companyName || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Apple Inc." />,
+        },
+        {
+          key: 'instrumentType',
+          name: 'Tipo',
+          width: 96,
+          renderCell: ({ row }) => row.instrumentType || '-',
+          renderEditCell: (props) => <SelectCellEditor {...props} options={securityInstrumentTypeOptions} />,
+        },
+        {
+          key: 'sector',
+          name: 'Sector',
+          width: 124,
+          renderCell: ({ row }) => row.sector || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Tecnología" />,
+        },
+        {
+          key: 'industry',
+          name: 'Industria',
+          width: 148,
+          renderCell: ({ row }) => row.industry || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Software" />,
+        },
+        {
+          key: 'exchangeCode',
+          name: 'Bolsa',
+          width: 92,
+          renderCell: ({ row }) => row.exchangeCode || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="NASDAQ" />,
+        },
+        {
+          key: 'countryCode',
+          name: 'País',
+          width: 82,
+          renderCell: ({ row }) => row.countryCode || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="US" />,
+        },
+        {
+          key: 'currencyCode',
+          name: 'Moneda',
+          width: 88,
+          renderCell: ({ row }) => row.currencyCode || '-',
+          renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
+        },
+        {
+          key: 'websiteUrl',
+          name: 'Sitio',
+          width: 180,
+          renderCell: ({ row }) => row.websiteUrl || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="https://..." />,
+        },
+        {
+          key: 'notes',
+          name: 'Notas',
+          width: 160,
+          renderCell: ({ row }) => row.notes || '-',
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
+        },
+        {
+          key: 'isActive',
+          name: 'Act.',
+          width: 76,
+          renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
+          renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
+        },
+      ];
+    }
+
+    const baseColumns: Column<CatalogGridRow>[] = [
+      actionColumn,
       {
         key: 'name',
         name: 'Nombre',
@@ -501,15 +718,23 @@ export function CatalogsPage() {
       },
     ];
 
-    if (selectedCatalog.requiresInstrumentType) {
+    if (selectedCatalog.kind === 'payment_instruments') {
       baseColumns.push({
         key: 'instrumentType',
         name: 'Tipo',
         width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => row.instrumentType || '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={instrumentTypeOptions} />,
+        renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentTypeOptions} />,
       });
     }
+
+    baseColumns.push({
+      key: 'isActive',
+      name: 'Act.',
+      width: 76,
+      renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
+      renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
+    });
 
     return baseColumns;
   }, [handleDeleteRow, handleRevertRow, persistCatalogRow, selectedCatalog]);

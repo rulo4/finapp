@@ -8,10 +8,13 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
   type Broker,
   type InvestmentDateFilterMode,
+  type Security,
   commitActiveEditorAndRun,
   createLocalId,
   formatCurrencyTotal,
   formatEditableNumber,
+  formatSecurityLabel,
+  formatSecurityOptionLabel,
   getDateRange,
   getTodayDate,
   investmentCurrencyOptions,
@@ -23,7 +26,7 @@ type DividendDbRow = {
   id: string;
   entry_date: string;
   broker_id: string;
-  ticker: string;
+  security_id: string;
   currency_code: 'MXN' | 'USD';
   gross_amount_original: number;
   tax_withheld_original: number | null;
@@ -40,7 +43,7 @@ type DividendGridRow = {
   errorMessage: string | null;
   entryDate: string;
   brokerId: string;
-  ticker: string;
+  securityId: string;
   currencyCode: 'MXN' | 'USD';
   grossAmountOriginal: string;
   taxWithheldOriginal: string;
@@ -55,10 +58,6 @@ const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 160;
 
-function normalizeTicker(value: string) {
-  return value.trim().toUpperCase();
-}
-
 function createDraftDividendRow(): DividendGridRow {
   return {
     id: createLocalId('dividend-draft'),
@@ -68,7 +67,7 @@ function createDraftDividendRow(): DividendGridRow {
     errorMessage: null,
     entryDate: getTodayDate(),
     brokerId: '',
-    ticker: '',
+    securityId: '',
     currencyCode: 'MXN',
     grossAmountOriginal: '',
     taxWithheldOriginal: '0',
@@ -93,7 +92,6 @@ function normalizeDividendGridRow(row: DividendGridRow): DividendGridRow {
 
   return {
     ...row,
-    ticker: normalizeTicker(row.ticker),
     fxRateToMxn,
     taxWithheldOriginal: row.taxWithheldOriginal.trim() ? row.taxWithheldOriginal : '0',
     netAmountMxn:
@@ -107,7 +105,7 @@ function canSaveDraftDividendRow(row: DividendGridRow) {
   return Boolean(
     row.entryDate.trim() &&
       row.brokerId &&
-      normalizeTicker(row.ticker) &&
+      row.securityId &&
       row.grossAmountOriginal.trim() &&
       (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
   );
@@ -117,7 +115,7 @@ function formatDividendIssuesMessage(row: DividendGridRow) {
   const issues: string[] = [];
 
   if (!row.entryDate.trim()) issues.push('captura la fecha');
-  if (!normalizeTicker(row.ticker)) issues.push('captura el ticker');
+  if (!row.securityId) issues.push('selecciona el ticker');
   if (!row.brokerId) issues.push('selecciona el broker');
   if (!row.grossAmountOriginal.trim()) issues.push('captura el bruto');
   if (row.currencyCode !== 'MXN' && !row.fxRateToMxn.trim()) issues.push('captura el tipo de cambio');
@@ -130,8 +128,8 @@ function validateDividendRow(row: DividendGridRow) {
     return 'usa una fecha valida en formato AAAA-MM-DD';
   }
 
-  if (!normalizeTicker(row.ticker)) {
-    return 'captura un ticker';
+  if (!row.securityId) {
+    return 'selecciona un ticker';
   }
 
   if (!row.brokerId) {
@@ -169,7 +167,7 @@ function toDividendGridRow(row: DividendDbRow): DividendGridRow {
     errorMessage: null,
     entryDate: row.entry_date,
     brokerId: row.broker_id,
-    ticker: row.ticker,
+    securityId: row.security_id,
     currencyCode: row.currency_code,
     grossAmountOriginal: formatEditableNumber(row.gross_amount_original),
     taxWithheldOriginal: formatEditableNumber(row.tax_withheld_original ?? 0),
@@ -181,6 +179,7 @@ function toDividendGridRow(row: DividendDbRow): DividendGridRow {
 
 export function DividendsGridPage() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<DividendGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -206,7 +205,7 @@ export function DividendsGridPage() {
 
     let entriesQuery = supabase
       .from('dividend_entries')
-      .select('id, entry_date, broker_id, ticker, currency_code, gross_amount_original, tax_withheld_original, fx_rate_to_mxn, net_amount_mxn, notes')
+      .select('id, entry_date, broker_id, security_id, currency_code, gross_amount_original, tax_withheld_original, fx_rate_to_mxn, net_amount_mxn, notes')
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -218,8 +217,13 @@ export function DividendsGridPage() {
       entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
     }
 
-    const [{ data: brokerData, error: brokerError }, { data: entryData, error: entryError }] = await Promise.all([
+    const [
+      { data: brokerData, error: brokerError },
+      { data: securityData, error: securityError },
+      { data: entryData, error: entryError },
+    ] = await Promise.all([
       supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+      supabase.from('securities').select('id, ticker, company_name, exchange_code, is_active').order('ticker', { ascending: true }),
       entriesQuery,
     ]);
 
@@ -235,15 +239,34 @@ export function DividendsGridPage() {
       return;
     }
 
+    if (securityError) {
+      setFeedback(`No fue posible cargar valores bursátiles: ${securityError.message}`);
+      setIsLoading(false);
+      return;
+    }
+
     const nextBrokers = (brokerData as Broker[]) ?? [];
+    const nextSecurities = (securityData as Security[]) ?? [];
     const nextRows = ((entryData as DividendDbRow[]) ?? []).map(toDividendGridRow);
     const loadedRows = withDraftRow(nextRows);
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
     setBrokers(nextBrokers);
+    setSecurities(nextSecurities);
     setRows(loadedRows);
-    setFeedback(nextBrokers.length > 0 ? null : 'Primero crea al menos un broker en Catálogos.');
+
+    const missingDependencies: string[] = [];
+    if (nextBrokers.length === 0) {
+      missingDependencies.push('al menos un broker');
+    }
+    if (!nextSecurities.some((security) => security.is_active)) {
+      missingDependencies.push('al menos un valor bursátil');
+    }
+
+    setFeedback(
+      missingDependencies.length > 0 ? `Primero crea ${missingDependencies.join(' y ')} en Catálogos.` : null,
+    );
     setIsLoading(false);
   }, [activeDateRange.end, activeDateRange.start]);
 
@@ -332,7 +355,7 @@ export function DividendsGridPage() {
     const payload = {
       entry_date: row.entryDate,
       broker_id: row.brokerId,
-      ticker: normalizeTicker(row.ticker),
+      security_id: row.securityId,
       currency_code: row.currencyCode,
       gross_amount_original: Number(gross.toFixed(6)),
       tax_withheld_original: Number(tax.toFixed(6)),
@@ -452,6 +475,20 @@ export function DividendsGridPage() {
     [brokers],
   );
   const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
+  const securityLabelById = useMemo(
+    () => new Map(securities.map((security) => [security.id, formatSecurityLabel(security)])),
+    [securities],
+  );
+  const securityOptions = useMemo<readonly SelectOption[]>(
+    () => [
+      { value: '', label: 'Ticker' },
+      ...securities.map((security) => ({
+        value: security.id,
+        label: security.is_active ? formatSecurityOptionLabel(security) : `${formatSecurityOptionLabel(security)} [inactivo]`,
+      })),
+    ],
+    [securities],
+  );
   const visibleSummary = useMemo(() => {
     const visibleRows = rows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
@@ -536,10 +573,11 @@ export function DividendsGridPage() {
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
     {
-      key: 'ticker',
+      key: 'securityId',
       name: 'Ticker',
-      width: 108,
-      renderEditCell: (props) => <InputCellEditor {...props} placeholder="AAPL" />,
+      width: 172,
+      renderCell: ({ row }) => securityLabelById.get(row.securityId) ?? '-',
+      renderEditCell: (props) => <SelectCellEditor {...props} options={securityOptions} />,
     },
     {
       key: 'brokerId',
@@ -585,7 +623,7 @@ export function DividendsGridPage() {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 

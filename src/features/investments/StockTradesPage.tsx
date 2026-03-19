@@ -8,10 +8,13 @@ import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
   type Broker,
   type InvestmentDateFilterMode,
+  type Security,
   commitActiveEditorAndRun,
   createLocalId,
   formatCurrencyTotal,
   formatEditableNumber,
+  formatSecurityLabel,
+  formatSecurityOptionLabel,
   getDateRange,
   getTodayDate,
   investmentCurrencyOptions,
@@ -25,7 +28,7 @@ type TradeDbRow = {
   id: string;
   trade_date: string;
   broker_id: string;
-  ticker: string;
+  security_id: string;
   currency_code: 'MXN' | 'USD';
   quantity: number;
   unit_price_original: number;
@@ -43,7 +46,7 @@ type TradeGridRow = {
   errorMessage: string | null;
   tradeDate: string;
   brokerId: string;
-  ticker: string;
+  securityId: string;
   currencyCode: 'MXN' | 'USD';
   quantity: string;
   unitPriceOriginal: string;
@@ -59,10 +62,6 @@ const AMOUNT_COLUMN_WIDTH = 92;
 const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 160;
 
-function normalizeTicker(value: string) {
-  return value.trim().toUpperCase();
-}
-
 function createDraftTradeRow(): TradeGridRow {
   return {
     id: createLocalId('trade-draft'),
@@ -72,7 +71,7 @@ function createDraftTradeRow(): TradeGridRow {
     errorMessage: null,
     tradeDate: getTodayDate(),
     brokerId: '',
-    ticker: '',
+    securityId: '',
     currencyCode: 'MXN',
     quantity: '',
     unitPriceOriginal: '',
@@ -100,7 +99,6 @@ function normalizeTradeGridRow(row: TradeGridRow, kind: TradeKind): TradeGridRow
 
   return {
     ...row,
-    ticker: normalizeTicker(row.ticker),
     fxRateToMxn,
     feesOriginal: row.feesOriginal.trim() ? row.feesOriginal : '0',
     totalAmountMxn:
@@ -114,7 +112,7 @@ function canSaveDraftTradeRow(row: TradeGridRow) {
   return Boolean(
     row.tradeDate.trim() &&
       row.brokerId &&
-      normalizeTicker(row.ticker) &&
+      row.securityId &&
       row.quantity.trim() &&
       row.unitPriceOriginal.trim() &&
       (row.currencyCode === 'MXN' || row.fxRateToMxn.trim()),
@@ -125,7 +123,7 @@ function formatTradeIssuesMessage(row: TradeGridRow) {
   const issues: string[] = [];
 
   if (!row.tradeDate.trim()) issues.push('captura la fecha');
-  if (!normalizeTicker(row.ticker)) issues.push('captura el ticker');
+  if (!row.securityId) issues.push('selecciona el ticker');
   if (!row.brokerId) issues.push('selecciona el broker');
   if (!row.quantity.trim()) issues.push('captura la cantidad');
   if (!row.unitPriceOriginal.trim()) issues.push('captura el precio');
@@ -139,8 +137,8 @@ function validateTradeRow(row: TradeGridRow, kind: TradeKind) {
     return 'usa una fecha valida en formato AAAA-MM-DD';
   }
 
-  if (!normalizeTicker(row.ticker)) {
-    return 'captura un ticker';
+  if (!row.securityId) {
+    return 'selecciona un ticker';
   }
 
   if (!row.brokerId) {
@@ -185,7 +183,7 @@ function toTradeGridRow(row: TradeDbRow): TradeGridRow {
     errorMessage: null,
     tradeDate: row.trade_date,
     brokerId: row.broker_id,
-    ticker: row.ticker,
+    securityId: row.security_id,
     currencyCode: row.currency_code,
     quantity: formatEditableNumber(row.quantity),
     unitPriceOriginal: formatEditableNumber(row.unit_price_original),
@@ -200,6 +198,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   const tableName = kind === 'buy' ? 'stock_buys' : 'stock_sells';
   const panelTitle = kind === 'buy' ? 'Compras de acciones' : 'Ventas de acciones';
   const [brokers, setBrokers] = useState<Broker[]>([]);
+  const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<TradeGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -225,7 +224,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
     let entriesQuery = supabase
       .from(tableName)
-      .select('id, trade_date, broker_id, ticker, currency_code, quantity, unit_price_original, fees_original, fx_rate_to_mxn, total_amount_mxn, notes')
+      .select('id, trade_date, broker_id, security_id, currency_code, quantity, unit_price_original, fees_original, fx_rate_to_mxn, total_amount_mxn, notes')
       .order('trade_date', { ascending: false })
       .order('created_at', { ascending: false });
 
@@ -237,8 +236,13 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       entriesQuery = entriesQuery.lte('trade_date', activeDateRange.end);
     }
 
-    const [{ data: brokerData, error: brokerError }, { data: entryData, error: entryError }] = await Promise.all([
+    const [
+      { data: brokerData, error: brokerError },
+      { data: securityData, error: securityError },
+      { data: entryData, error: entryError },
+    ] = await Promise.all([
       supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+      supabase.from('securities').select('id, ticker, company_name, exchange_code, is_active').order('ticker', { ascending: true }),
       entriesQuery,
     ]);
 
@@ -254,15 +258,34 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       return;
     }
 
+    if (securityError) {
+      setFeedback(`No fue posible cargar valores bursátiles: ${securityError.message}`);
+      setIsLoading(false);
+      return;
+    }
+
     const nextBrokers = (brokerData as Broker[]) ?? [];
+    const nextSecurities = (securityData as Security[]) ?? [];
     const nextRows = ((entryData as TradeDbRow[]) ?? []).map(toTradeGridRow);
     const loadedRows = withDraftRow(nextRows);
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
     setBrokers(nextBrokers);
+    setSecurities(nextSecurities);
     setRows(loadedRows);
-    setFeedback(nextBrokers.length > 0 ? null : 'Primero crea al menos un broker en Catálogos.');
+
+    const missingDependencies: string[] = [];
+    if (nextBrokers.length === 0) {
+      missingDependencies.push('al menos un broker');
+    }
+    if (!nextSecurities.some((security) => security.is_active)) {
+      missingDependencies.push('al menos un valor bursátil');
+    }
+
+    setFeedback(
+      missingDependencies.length > 0 ? `Primero crea ${missingDependencies.join(' y ')} en Catálogos.` : null,
+    );
     setIsLoading(false);
   }, [activeDateRange.end, activeDateRange.start, panelTitle, tableName]);
 
@@ -354,7 +377,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     const payload = {
       trade_date: row.tradeDate,
       broker_id: row.brokerId,
-      ticker: normalizeTicker(row.ticker),
+      security_id: row.securityId,
       currency_code: row.currencyCode,
       quantity: Number(quantity.toFixed(6)),
       unit_price_original: Number(unitPrice.toFixed(6)),
@@ -475,6 +498,20 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     [brokers],
   );
   const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
+  const securityLabelById = useMemo(
+    () => new Map(securities.map((security) => [security.id, formatSecurityLabel(security)])),
+    [securities],
+  );
+  const securityOptions = useMemo<readonly SelectOption[]>(
+    () => [
+      { value: '', label: 'Ticker' },
+      ...securities.map((security) => ({
+        value: security.id,
+        label: security.is_active ? formatSecurityOptionLabel(security) : `${formatSecurityOptionLabel(security)} [inactivo]`,
+      })),
+    ],
+    [securities],
+  );
   const visibleSummary = useMemo(() => {
     const visibleRows = rows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
@@ -559,10 +596,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
     {
-      key: 'ticker',
+      key: 'securityId',
       name: 'Ticker',
-      width: 108,
-      renderEditCell: (props) => <InputCellEditor {...props} placeholder="AAPL" />,
+      width: 172,
+      renderCell: ({ row }) => securityLabelById.get(row.securityId) ?? '-',
+      renderEditCell: (props) => <SelectCellEditor {...props} options={securityOptions} />,
     },
     {
       key: 'brokerId',
@@ -614,7 +652,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
