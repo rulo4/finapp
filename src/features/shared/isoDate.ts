@@ -2,6 +2,30 @@ export const ISO_DATE_PLACEHOLDER = 'YYYY-MM-DD';
 
 const ISO_DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
+export function formatLocalDateAsIsoString(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+
+  return `${year}-${month}-${day}`;
+}
+
+export function getTodayIsoDate() {
+  return formatLocalDateAsIsoString(new Date());
+}
+
+export function getStartOfCurrentMonthIsoDate() {
+  const today = new Date();
+
+  return formatLocalDateAsIsoString(new Date(today.getFullYear(), today.getMonth(), 1));
+}
+
+export function getStartOfCurrentYearIsoDate() {
+  const today = new Date();
+
+  return formatLocalDateAsIsoString(new Date(today.getFullYear(), 0, 1));
+}
+
 export function isIsoDateString(value: string) {
   if (!ISO_DATE_REGEX.test(value)) {
     return false;

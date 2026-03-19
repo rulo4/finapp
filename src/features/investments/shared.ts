@@ -1,4 +1,10 @@
 import type { SelectOption } from '../shared/gridEditors';
+import {
+  formatLocalDateAsIsoString,
+  getStartOfCurrentMonthIsoDate,
+  getStartOfCurrentYearIsoDate,
+  getTodayIsoDate,
+} from '../shared/isoDate';
 
 export type Broker = {
   id: string;
@@ -18,19 +24,15 @@ export const investmentCurrencyOptions: readonly SelectOption[] = [
 ];
 
 export function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayIsoDate();
 }
 
 export function getStartOfCurrentMonth() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  return getStartOfCurrentMonthIsoDate();
 }
 
 export function getStartOfCurrentYear() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  return getStartOfCurrentYearIsoDate();
 }
 
 export function getDateRange(mode: InvestmentDateFilterMode) {

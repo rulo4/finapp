@@ -4,7 +4,12 @@ import { faCopy, faEraser, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
-import { isIsoDateString } from '../features/shared/isoDate';
+import {
+  getStartOfCurrentMonthIsoDate,
+  getStartOfCurrentYearIsoDate,
+  getTodayIsoDate,
+  isIsoDateString,
+} from '../features/shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type ExpenseCategory = {
@@ -92,19 +97,15 @@ function normalizeExpenseEntry(row: ExpenseEntryRow): ExpenseEntry {
 }
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayIsoDate();
 }
 
 function getStartOfCurrentMonth() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  return getStartOfCurrentMonthIsoDate();
 }
 
 function getStartOfCurrentYear() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  return getStartOfCurrentYearIsoDate();
 }
 
 function isDateWithinRange(date: string, range: { start: string; end: string }) {
