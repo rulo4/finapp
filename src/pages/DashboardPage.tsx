@@ -5,6 +5,10 @@ import {
   isSupabaseConfigured,
   supabase,
 } from '../lib/supabase/client';
+import {
+  formatLocalDateAsIsoString,
+  getTodayIsoDate,
+} from '../features/shared/isoDate';
 
 type IncomeDashboardRow = {
   id: string;
@@ -44,8 +48,8 @@ function getMonthWindow() {
   const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
   return {
-    start: start.toISOString().slice(0, 10),
-    end: end.toISOString().slice(0, 10),
+    start: formatLocalDateAsIsoString(start),
+    end: formatLocalDateAsIsoString(end),
   };
 }
 
@@ -54,13 +58,13 @@ function getYearWindow() {
   const start = new Date(now.getFullYear(), 0, 1);
 
   return {
-    start: start.toISOString().slice(0, 10),
+    start: formatLocalDateAsIsoString(start),
     end: getTodayDate(),
   };
 }
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayIsoDate();
 }
 
 type DashboardPeriodMode = 'all' | 'month' | 'year';

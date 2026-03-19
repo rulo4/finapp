@@ -68,6 +68,40 @@ const selectStyles: StylesConfig<SelectOption, false> = {
   }),
 };
 
+const compactSelectStyles: StylesConfig<SelectOption, false> = {
+  ...selectStyles,
+  control: (base, state) => ({
+    ...selectStyles.control?.(base, state),
+    minHeight: 28,
+    height: 28,
+    borderRadius: 0,
+    borderWidth: 0,
+    boxShadow: 'none',
+  }),
+  valueContainer: (base, props) => ({
+    ...selectStyles.valueContainer?.(base, props),
+    height: 28,
+    padding: '0 8px',
+  }),
+  input: (base, props) => ({
+    ...selectStyles.input?.(base, props),
+    margin: 0,
+    padding: 0,
+  }),
+  indicatorsContainer: (base) => ({
+    ...base,
+    height: 28,
+  }),
+  dropdownIndicator: (base, state) => ({
+    ...selectStyles.dropdownIndicator?.(base, state),
+    padding: 4,
+  }),
+  clearIndicator: (base) => ({
+    ...base,
+    padding: 4,
+  }),
+};
+
 type AppSelectProps = {
   options: readonly SelectOption[];
   value: string;
@@ -78,6 +112,7 @@ type AppSelectProps = {
   onBlur?: () => void;
   autoFocus?: boolean;
   instanceRef?: Ref<SelectInstance<SelectOption, false>>;
+  compact?: boolean;
 };
 
 export function AppSelect({
@@ -90,6 +125,7 @@ export function AppSelect({
   onBlur,
   autoFocus = false,
   instanceRef,
+  compact = false,
 }: AppSelectProps) {
   const inputId = useId();
   const selectedOption = useMemo(() => options.find((option) => option.value === value) ?? null, [options, value]);
@@ -108,7 +144,7 @@ export function AppSelect({
       isSearchable={isSearchable}
       autoFocus={autoFocus}
       menuPortalTarget={typeof document === 'undefined' ? undefined : document.body}
-      styles={selectStyles}
+      styles={compact ? compactSelectStyles : selectStyles}
       noOptionsMessage={() => 'Sin opciones'}
     />
   );
@@ -215,6 +251,7 @@ export function SelectCellEditor<TRow extends EditorRow>({
       ariaLabel={column.name ? String(column.name) : 'Seleccionar opcion'}
       options={options}
       value={String(row[key] ?? '')}
+      compact
       autoFocus
       onChange={(nextValue) => {
         onRowChange({ ...row, [key]: nextValue } as TRow, true);

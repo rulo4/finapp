@@ -3,7 +3,12 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
-import { isIsoDateString } from '../features/shared/isoDate';
+import {
+  getStartOfCurrentMonthIsoDate,
+  getStartOfCurrentYearIsoDate,
+  getTodayIsoDate,
+  isIsoDateString,
+} from '../features/shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type IncomeSource = {
@@ -56,19 +61,15 @@ function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
 }
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayIsoDate();
 }
 
 function getStartOfCurrentMonth() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), today.getMonth(), 1).toISOString().slice(0, 10);
+  return getStartOfCurrentMonthIsoDate();
 }
 
 function getStartOfCurrentYear() {
-  const today = new Date();
-
-  return new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10);
+  return getStartOfCurrentYearIsoDate();
 }
 
 function isErrorFeedback(message: string) {

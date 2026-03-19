@@ -6,7 +6,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
 import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
-import { isIsoDateString } from '../features/shared/isoDate';
+import { getTodayIsoDate, isIsoDateString } from '../features/shared/isoDate';
 import type { ParsedTicketExpense, TicketRecord, TicketStatus } from '../features/tickets/types';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
@@ -34,7 +34,7 @@ type ReviewRow = {
 const GRID_ROW_HEIGHT = 30;
 
 function getTodayDate() {
-  return new Date().toISOString().slice(0, 10);
+  return getTodayIsoDate();
 }
 
 function createLocalId(prefix: string) {
