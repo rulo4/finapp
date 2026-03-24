@@ -10,6 +10,7 @@ const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((module) => 
 const InvestmentsPage = lazy(() => import('./pages/InvestmentsPage').then((module) => ({ default: module.InvestmentsPage })));
 const StockBuysPage = lazy(() => import('./pages/StockBuysPage').then((module) => ({ default: module.StockBuysPage })));
 const StockSellsPage = lazy(() => import('./pages/StockSellsPage').then((module) => ({ default: module.StockSellsPage })));
+const StockHoldingsPage = lazy(() => import('./pages/StockHoldingsPage').then((module) => ({ default: module.StockHoldingsPage })));
 const DividendsPage = lazy(() => import('./pages/DividendsPage').then((module) => ({ default: module.DividendsPage })));
 const CatalogsPage = lazy(() => import('./pages/CatalogsPage').then((module) => ({ default: module.CatalogsPage })));
 const TicketsPage = lazy(() => import('./pages/TicketsPage').then((module) => ({ default: module.TicketsPage })));
@@ -89,6 +90,14 @@ export default function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <StockSellsPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/stocks/holdings"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <StockHoldingsPage />
             </Suspense>
           }
         />

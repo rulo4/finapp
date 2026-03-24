@@ -588,6 +588,25 @@ textarea {
   font-size: 0.78rem;
 }
 
+.badge--pnl {
+  font-weight: 700;
+}
+
+.badge--pnl.trade-cell-value--positive {
+  background: #ecfdf3;
+  color: #166534;
+}
+
+.badge--pnl.trade-cell-value--negative {
+  background: #fef2f2;
+  color: #b91c1c;
+}
+
+.badge--pnl.trade-cell-value {
+  background: #eef2ff;
+  color: #4338ca;
+}
+
 .grid-wrapper {
   border-radius: 14px;
   overflow: hidden;
@@ -1011,10 +1030,124 @@ textarea {
   grid-template-columns: minmax(180px, 1.4fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr);
 }
 
+.finance-table--stock-holdings .finance-table__head,
+.finance-table--stock-holdings .finance-table__row {
+  grid-template-columns: minmax(120px, 1fr) minmax(180px, 1.6fr) minmax(110px, 0.8fr) minmax(130px, 0.9fr) minmax(140px, 1fr) minmax(140px, 1fr) minmax(100px, 0.7fr);
+}
+
 .finance-panel__summary {
   display: grid;
   gap: 12px;
   margin-top: 16px;
+}
+
+.trade-metrics-panel {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.trade-metrics-panel__item {
+  display: grid;
+  gap: 4px;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.trade-metrics-panel__label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.trade-metrics-panel__value {
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.trade-cell-value {
+  font-weight: 600;
+}
+
+.trade-cell-value--positive {
+  color: #166534;
+}
+
+.trade-cell-value--negative {
+  color: #b91c1c;
+}
+
+.holdings-filter {
+  display: grid;
+  gap: 4px;
+  min-inline-size: 180px;
+}
+
+.holdings-filter__label {
+  font-size: 12px;
+  color: #64748b;
+}
+
+.holdings-filter__input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: 34px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0 10px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.holdings-filter__input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  border-color: #2563eb;
+}
+
+.grid-header-filter-cell {
+  line-height: normal;
+  padding: 0;
+}
+
+.grid-header-filter-cell > div {
+  display: grid;
+  grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+  gap: 4px;
+  block-size: 100%;
+  padding: 6px 8px;
+  align-content: start;
+}
+
+.grid-header-filter {
+  display: contents;
+}
+
+.grid-header-filter__label {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.grid-header-filter__input {
+  inline-size: 100%;
+  min-inline-size: 0;
+  block-size: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+}
+
+.grid-header-filter__input:focus {
+  outline: 2px solid rgba(37, 99, 235, 0.2);
+  border-color: #2563eb;
 }
 
 .rdg {
@@ -1053,6 +1186,22 @@ textarea {
 
 .row-error {
   background: #fff8f8;
+}
+
+.row-sell-group-start {
+  box-shadow: inset 0 3px 0 #bfdbfe;
+}
+
+.row-sell-group .rdg-cell:first-child,
+.row-sell-group .rdg-cell:nth-child(2) {
+  background-image: linear-gradient(180deg, rgba(191, 219, 254, 0.28), rgba(191, 219, 254, 0.28));
+  background-size: 4px 100%;
+  background-repeat: no-repeat;
+  background-position: left center;
+}
+
+.row-sell-group-end {
+  border-bottom: 2px solid #dbeafe;
 }
 
 .mini-calculator {
@@ -1676,6 +1825,10 @@ textarea {
   }
 
   .catalog-layout {
+
+  .trade-metrics-panel {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
     grid-template-columns: 1fr;
   }
 
