@@ -13,6 +13,7 @@ import {
   createLocalId,
   formatCurrencyTotal,
   formatEditableNumber,
+  formatQuantityTotal,
   formatPercentage,
   formatSecurityLabel,
   formatSecurityOptionLabel,
@@ -792,6 +793,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
       return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
     }, 0);
+    const totalQuantity = visibleRows.reduce((sum, row) => {
+      const rowQuantity = Number(row.quantity);
+
+      return Number.isFinite(rowQuantity) ? sum + rowQuantity : sum;
+    }, 0);
     const totalRealizedPnl = kind === 'sell'
       ? visibleRows.reduce((sum, row) => {
           const rowPnl = Number(row.fifoRealizedPnlMxn);
@@ -803,6 +809,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     return {
       count: visibleRows.length,
       totalLabel: formatCurrencyTotal(totalAmount),
+      totalQuantityLabel: formatQuantityTotal(totalQuantity),
       totalRealizedPnl,
     };
   }, [filteredRows, kind]);
@@ -1187,6 +1194,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           <div className="badge-row" aria-label={`Resumen de ${panelTitle.toLowerCase()} visibles`}>
             <span className="badge">{visibleSummary.count} regs</span>
             <span className="badge">{visibleSummary.totalLabel}</span>
+            {kind === 'buy' ? <span className="badge">{visibleSummary.totalQuantityLabel} títulos</span> : null}
             {kind === 'sell' && visibleSummary.totalRealizedPnl != null ? (
               <span
                 className={`badge ${getPnlToneClass(visibleSummary.totalRealizedPnl)} badge--pnl`}
