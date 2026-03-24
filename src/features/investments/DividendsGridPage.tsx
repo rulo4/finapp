@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../shared/gridEditors';
 import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
@@ -53,6 +53,7 @@ type DividendGridRow = {
 };
 
 const GRID_ROW_HEIGHT = 30;
+const FILTER_HEADER_ROW_HEIGHT = 64;
 const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
@@ -181,6 +182,7 @@ export function DividendsGridPage() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<DividendGridRow[]>([]);
+  const [tickerFilter, setTickerFilter] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
@@ -489,8 +491,23 @@ export function DividendsGridPage() {
     ],
     [securities],
   );
+  const filteredRows = useMemo(() => {
+    const normalizedFilter = tickerFilter.trim().toLowerCase();
+    if (!normalizedFilter) {
+      return rows;
+    }
+
+    return rows.filter((row) => {
+      if (row.isDraft) {
+        return true;
+      }
+
+      const tickerLabel = securityLabelById.get(row.securityId)?.toLowerCase() ?? '';
+      return tickerLabel.includes(normalizedFilter);
+    });
+  }, [rows, securityLabelById, tickerFilter]);
   const visibleSummary = useMemo(() => {
-    const visibleRows = rows.filter((row) => !row.isDraft);
+    const visibleRows = filteredRows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
       const rowTotal = Number(row.netAmountMxn);
 
@@ -501,7 +518,31 @@ export function DividendsGridPage() {
       count: visibleRows.length,
       totalLabel: formatCurrencyTotal(totalAmount),
     };
-  }, [rows]);
+  }, [filteredRows]);
+
+  function renderTickerHeaderCell(props: RenderHeaderCellProps<DividendGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Ticker</div>
+        <input
+          type="text"
+          className="grid-header-filter__input"
+          value={tickerFilter}
+          placeholder="Filtrar"
+          tabIndex={props.tabIndex}
+          aria-label="Filtrar dividendos por ticker"
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+            }
+          }}
+          onChange={(event) => {
+            setTickerFilter(event.target.value);
+          }}
+        />
+      </div>
+    );
+  }
 
   const columns = useMemo<readonly Column<DividendGridRow>[]>(() => [
     {
@@ -576,6 +617,8 @@ export function DividendsGridPage() {
       key: 'securityId',
       name: 'Ticker',
       width: 172,
+      headerCellClass: 'grid-header-filter-cell',
+      renderHeaderCell: renderTickerHeaderCell,
       renderCell: ({ row }) => securityLabelById.get(row.securityId) ?? '-',
       renderEditCell: (props) => <SelectCellEditor {...props} options={securityOptions} />,
     },
@@ -623,7 +666,7 @@ export function DividendsGridPage() {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions]);
+  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions, tickerFilter]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
@@ -693,9 +736,9 @@ export function DividendsGridPage() {
           <DataGrid
             ref={gridRef}
             columns={columns}
-            rows={rows}
+            rows={filteredRows}
             rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {

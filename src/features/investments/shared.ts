@@ -92,6 +92,18 @@ export function formatCurrencyTotal(value: number) {
   }).format(value);
 }
 
+export function formatPercentage(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return '—';
+  }
+
+  return new Intl.NumberFormat('es-MX', {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
 export function formatSecurityLabel(security: Security) {
   const exchangeSuffix = security.exchange_code?.trim() ? ` (${security.exchange_code.trim().toUpperCase()})` : '';
 
