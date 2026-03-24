@@ -92,6 +92,13 @@ export function formatCurrencyTotal(value: number) {
   }).format(value);
 }
 
+export function formatQuantityTotal(value: number) {
+  return new Intl.NumberFormat('es-MX', {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  }).format(value);
+}
+
 export function formatPercentage(value: number | null | undefined) {
   if (value == null || !Number.isFinite(value)) {
     return '—';
