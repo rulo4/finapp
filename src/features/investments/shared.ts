@@ -9,6 +9,7 @@ import {
 export type Broker = {
   id: string;
   name: string;
+  default_fee_factor?: number | null;
 };
 
 export type Security = {

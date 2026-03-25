@@ -51,6 +51,7 @@ type TradeGridRow = {
   id: string;
   persistedId: string | null;
   createdAt: string | null;
+  isFeeManual: boolean;
   isDraft: boolean;
   status: 'new' | 'saved' | 'dirty' | 'error' | 'saving';
   errorMessage: string | null;
@@ -104,6 +105,7 @@ function createDraftTradeRow(): TradeGridRow {
     id: createLocalId('trade-draft'),
     persistedId: null,
     createdAt: null,
+    isFeeManual: false,
     isDraft: true,
     status: 'new',
     errorMessage: null,
@@ -125,6 +127,30 @@ function createDraftTradeRow(): TradeGridRow {
   };
 }
 
+function getBrokerDefaultFeeFactor(row: TradeGridRow, brokerById: Map<string, Broker>) {
+  const defaultFeeFactor = brokerById.get(row.brokerId)?.default_fee_factor;
+
+  return defaultFeeFactor != null && Number.isFinite(defaultFeeFactor) && defaultFeeFactor >= 0 ? defaultFeeFactor : 0;
+}
+
+function applyDefaultTradeFee(row: TradeGridRow, brokerById: Map<string, Broker>) {
+  const quantity = Number(row.quantity);
+  const unitPrice = Number(row.unitPriceOriginal);
+
+  if (!Number.isFinite(quantity) || quantity <= 0 || !Number.isFinite(unitPrice) || unitPrice <= 0) {
+    return {
+      ...row,
+      feesOriginal: '0',
+    };
+  }
+
+  const fees = quantity * unitPrice * getBrokerDefaultFeeFactor(row, brokerById);
+  return {
+    ...row,
+    feesOriginal: formatEditableNumber(Number(fees.toFixed(6))) || '0',
+  };
+}
+
 function withDraftRow(rows: TradeGridRow[]) {
   const draftRow = rows.find((row) => row.isDraft) ?? createDraftTradeRow();
 
@@ -132,7 +158,7 @@ function withDraftRow(rows: TradeGridRow[]) {
 }
 
 function normalizeTradeGridRow(row: TradeGridRow, kind: TradeKind): TradeGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
+  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn.trim();
   const quantity = Number(row.quantity);
   const unitPrice = Number(row.unitPriceOriginal);
   const fees = Number(row.feesOriginal || '0');
@@ -222,6 +248,7 @@ function toTradeGridRow(row: TradeDbRow): TradeGridRow {
     id: row.id,
     persistedId: row.id,
     createdAt: row.created_at,
+    isFeeManual: true,
     isDraft: false,
     status: 'saved',
     errorMessage: null,
@@ -372,7 +399,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       { data: buyHistoryData, error: buyHistoryError },
       { data: sellHistoryData, error: sellHistoryError },
     ] = await Promise.all([
-      supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+      supabase.from('brokers').select('id, name, default_fee_factor').eq('is_active', true).order('name', { ascending: true }),
       supabase.from('securities').select('id, ticker, company_name, exchange_code, is_active').order('ticker', { ascending: true }),
       entriesQuery,
       kind === 'sell'
@@ -479,7 +506,37 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       return;
     }
 
-    const normalizedRow = normalizeTradeGridRow(nextRows[rowIndex], kind);
+    const previousRow = rowsRef.current[rowIndex] ?? nextRows[rowIndex];
+    const currencyChanged = nextRows[rowIndex].currencyCode !== previousRow.currencyCode;
+    const brokerChanged = nextRows[rowIndex].brokerId !== previousRow.brokerId;
+    const quantityChanged = nextRows[rowIndex].quantity !== previousRow.quantity;
+    const unitPriceChanged = nextRows[rowIndex].unitPriceOriginal !== previousRow.unitPriceOriginal;
+    const feesChanged = nextRows[rowIndex].feesOriginal !== previousRow.feesOriginal;
+
+    let nextEditedRow: TradeGridRow = nextRows[rowIndex];
+    if (currencyChanged) {
+      nextEditedRow = {
+        ...nextEditedRow,
+        fxRateToMxn: nextRows[rowIndex].currencyCode === 'MXN' ? '1' : previousRow.currencyCode === 'MXN' ? '' : nextRows[rowIndex].fxRateToMxn,
+      };
+    }
+
+    const nextIsFeeManual = brokerChanged
+      ? false
+      : feesChanged && !quantityChanged && !unitPriceChanged
+        ? true
+        : previousRow.isFeeManual;
+
+    nextEditedRow = {
+      ...nextEditedRow,
+      isFeeManual: nextIsFeeManual,
+    };
+
+    if (!nextIsFeeManual && (brokerChanged || quantityChanged || unitPriceChanged)) {
+      nextEditedRow = applyDefaultTradeFee(nextEditedRow, brokerById);
+    }
+
+    const normalizedRow = normalizeTradeGridRow(nextEditedRow, kind);
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftTradeRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateTradeRow(normalizedRow, kind) : null;
     const updatedRows: TradeGridRow[] = nextRows.map((row, index) => {
@@ -755,6 +812,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     () => [{ value: '', label: 'Broker' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
     [brokers],
   );
+  const brokerById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker])), [brokers]);
   const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
   const securityLabelById = useMemo(
     () => new Map(securities.map((security) => [security.id, formatSecurityLabel(security)])),
@@ -1220,6 +1278,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
+              if (args.column.key === 'fxRateToMxn' && args.row.currencyCode === 'MXN') {
+                return;
+              }
+
               if (kind === 'sell' && !args.row.isDraft) {
                 return;
               }
@@ -1229,6 +1291,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
               }
             }}
             onSelectedCellChange={(args) => {
+              if (args.row && args.column.key === 'fxRateToMxn' && args.row.currencyCode === 'MXN') {
+                return;
+              }
+
               if (kind === 'sell' && args.row && !args.row.isDraft) {
                 return;
               }
