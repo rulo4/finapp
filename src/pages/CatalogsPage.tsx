@@ -7,7 +7,7 @@ import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type PaymentInstrumentType = 'cash' | 'debit_card' | 'credit_card';
 type SecurityInstrumentType = 'stock' | 'etf' | 'fibra' | 'reit' | 'adr' | 'fund' | 'other';
-type CatalogKind = 'basic' | 'payment_instruments' | 'securities';
+type CatalogKind = 'basic' | 'payment_instruments' | 'securities' | 'brokers';
 
 type CatalogConfig = {
   key: string;
@@ -31,6 +31,7 @@ type CatalogDbRow = {
   country_code?: string | null;
   currency_code?: 'MXN' | 'USD' | null;
   website_url?: string | null;
+  default_fee_factor?: number | null;
   created_at: string;
 };
 
@@ -52,6 +53,7 @@ type CatalogGridRow = {
   countryCode: string;
   currencyCode: string;
   websiteUrl: string;
+  defaultFeeFactor: string;
   notes: string;
 };
 
@@ -116,7 +118,7 @@ const catalogConfigs: CatalogConfig[] = [
     key: 'brokers',
     label: 'Brokers',
     description: 'Intermediarios para operaciones de inversion.',
-    kind: 'basic',
+    kind: 'brokers',
   },
   {
     key: 'investment_entities',
@@ -173,6 +175,7 @@ function createDraftCatalogRow(config: CatalogConfig): CatalogGridRow {
     countryCode: '',
     currencyCode: config.kind === 'securities' ? 'USD' : '',
     websiteUrl: '',
+    defaultFeeFactor: config.kind === 'brokers' ? '0' : '',
     notes: '',
   };
 }
@@ -196,6 +199,7 @@ function toCatalogGridRow(row: CatalogDbRow, config: CatalogConfig): CatalogGrid
     countryCode: row.country_code ?? '',
     currencyCode: row.currency_code ?? (config.kind === 'securities' ? 'USD' : ''),
     websiteUrl: row.website_url ?? '',
+    defaultFeeFactor: row.default_fee_factor == null ? (config.kind === 'brokers' ? '0' : '') : String(Number(row.default_fee_factor)),
     notes: row.notes ?? '',
   };
 }
@@ -248,6 +252,13 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
 
     if (config.kind === 'payment_instruments' && !row.instrumentType) {
       return 'Selecciona el tipo de instrumento.';
+    }
+
+    if (config.kind === 'brokers') {
+      const defaultFeeFactor = Number(row.defaultFeeFactor || '0');
+      if (!Number.isFinite(defaultFeeFactor) || defaultFeeFactor < 0) {
+        return 'El factor de comisión debe ser un numero mayor o igual a cero.';
+      }
     }
   }
 
@@ -400,7 +411,7 @@ export function CatalogsPage() {
       setErrorMessage(null);
 
       const normalizedRow = normalizeCatalogGridRow(row, selectedCatalog.kind);
-      let payload: Record<string, string | boolean | null>;
+      let payload: Record<string, string | boolean | number | null>;
 
       if (selectedCatalog.kind === 'securities') {
         payload = {
@@ -426,6 +437,10 @@ export function CatalogsPage() {
 
         if (selectedCatalog.kind === 'payment_instruments') {
           payload.instrument_type = normalizedRow.instrumentType as PaymentInstrumentType;
+        }
+
+        if (selectedCatalog.kind === 'brokers') {
+          payload.default_fee_factor = Number((Number(normalizedRow.defaultFeeFactor || '0')).toFixed(6));
         }
       }
 
@@ -725,6 +740,16 @@ export function CatalogsPage() {
         width: DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => row.instrumentType || '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentTypeOptions} />,
+      });
+    }
+
+    if (selectedCatalog.kind === 'brokers') {
+      baseColumns.push({
+        key: 'defaultFeeFactor',
+        name: 'Factor comisión',
+        width: 128,
+        renderCell: ({ row }) => row.defaultFeeFactor || '0',
+        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0.0029" />,
       });
     }
 
