@@ -84,7 +84,7 @@ Evitar anunciar como V1 final mientras existan modulos placeholder o incompletos
 - fuente de verdad del codigo: GitHub
 
 ## Estrategia de entornos
-- `local`: `npm run supabase:start` + `npm run dev`
+- `local`: `pnpm run supabase:start` + `pnpm run dev`
 - `staging`: proyecto Supabase Cloud de pruebas + proyecto Pages de pruebas o previews por rama
 - `production`: proyecto Supabase Cloud productivo + proyecto Pages productivo
 
@@ -94,8 +94,8 @@ No mezclar datos ni claves entre `staging` y `production`.
 ### 1. Repositorio
 1. Confirmar que el codigo esta en GitHub.
 2. Confirmar que [.gitignore](.gitignore) contiene `.env.local`, `.env` y artefactos locales.
-3. Ejecutar `npm install` si hace falta sincronizar dependencias.
-4. Ejecutar `npm run build` y corregir cualquier error antes de desplegar.
+3. Ejecutar `pnpm install` si hace falta sincronizar dependencias.
+4. Ejecutar `pnpm run build` y corregir cualquier error antes de desplegar.
 5. Confirmar que las migraciones en `supabase/migrations/` representan el estado real a desplegar.
 
 ### 2. Proyecto Supabase Cloud de staging
@@ -113,9 +113,9 @@ No mezclar datos ni claves entre `staging` y `production`.
 Comandos:
 
 ```bash
-supabase login
-supabase link --project-ref <staging-project-ref>
-supabase db push
+pnpm --config.ignore-scripts=false dlx supabase login
+pnpm --config.ignore-scripts=false dlx supabase link --project-ref <staging-project-ref>
+pnpm --config.ignore-scripts=false dlx supabase db push
 ```
 
 Validacion:
@@ -148,7 +148,7 @@ Opciones:
 1. En Cloudflare Pages, conectar el repositorio GitHub.
 2. Configurar:
    - Framework preset: `Vite`
-   - Build command: `npm run build`
+   - Build command: `pnpm run build`
    - Build output directory: `dist`
 3. Configurar variables de entorno:
    - `VITE_SUPABASE_URL=https://<staging-project>.supabase.co`
@@ -184,8 +184,8 @@ Repetir el mismo flujo con recursos separados.
 Comandos:
 
 ```bash
-supabase link --project-ref <production-project-ref>
-supabase db push
+pnpm --config.ignore-scripts=false dlx supabase link --project-ref <production-project-ref>
+pnpm --config.ignore-scripts=false dlx supabase db push
 ```
 
 ### 3. Cargar catalogos base
@@ -222,13 +222,13 @@ Si vas a usar dominio propio:
 
 ## Comandos utiles
 ```bash
-npm run dev
-npm run build
-npm run preview
-npm run supabase:start
-npm run supabase:status
-npm run supabase:stop
-npm run supabase:reset
+pnpm run dev
+pnpm run build
+pnpm run preview
+pnpm run supabase:start
+pnpm run supabase:status
+pnpm run supabase:stop
+pnpm run supabase:reset
 ```
 
 ## Seguridad y privacidad

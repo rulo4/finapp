@@ -22,9 +22,16 @@ Motivo:
 
 ## Requisitos para desarrollo local
 - Node.js 20 o superior
-- npm
+- pnpm
 - Docker Desktop ejecutándose
 - Supabase CLI instalada
+
+## Politica de scripts de dependencias
+Este repo fija `ignore-scripts=true` en [.npmrc](.npmrc) para reducir riesgo de ejecutar scripts de terceros durante instalaciones normales.
+
+Excepcion operativa:
+- los scripts `supabase:*` de [package.json](package.json) habilitan scripts solo para esa ejecucion con `pnpm --config.ignore-scripts=false dlx supabase ...`
+- para comandos de Supabase, usa siempre `pnpm run supabase:start|status|stop|reset` en lugar de invocar `supabase` o `npx supabase` directamente
 
 ## Como corre localmente
 Este proyecto no necesita un `docker-compose` propio para Supabase.
@@ -55,15 +62,15 @@ Reglas de seguridad:
 - toda clave real debe vivir en variables de entorno de la plataforma de despliegue
 
 ## Arranque rapido local
-1. Instala dependencias del frontend con `npm install`.
+1. Instala dependencias del frontend con `pnpm install`.
 2. Inicia Docker Desktop si no esta activo.
-3. Levanta Supabase local con `npm run supabase:start`.
-4. Revisa credenciales y puertos con `npm run supabase:status`.
+3. Levanta Supabase local con `pnpm run supabase:start`.
+4. Revisa credenciales y puertos con `pnpm run supabase:status`.
 5. Copia `.env.example` a `.env.local`.
 6. En `.env.local`, usa estos valores para local:
 	- `VITE_SUPABASE_URL=http://127.0.0.1:54321`
-	- `VITE_SUPABASE_ANON_KEY=<valor anon publicado por npm run supabase:status>`
-7. Inicia el frontend con `npm run dev`.
+	- `VITE_SUPABASE_ANON_KEY=<valor anon publicado por pnpm run supabase:status>`
+7. Inicia el frontend con `pnpm run dev`.
 8. Abre la app en `http://127.0.0.1:5173`.
 
 Con eso deberias poder registrarte e iniciar sesion contra el entorno local de Supabase.
@@ -81,16 +88,16 @@ En local, la confirmacion por correo esta desactivada, asi que el acceso es inme
 - plan funcional original: [plan-finapp.prompt.md](plan-finapp.prompt.md)
 
 ## Supabase local
-- levantar stack: `npm run supabase:start`
-- revisar estado y credenciales: `npm run supabase:status`
+- levantar stack: `pnpm run supabase:start`
+- revisar estado y credenciales: `pnpm run supabase:status`
 - abrir Studio: `http://127.0.0.1:54323`
-- detener stack: `npm run supabase:stop`
-- reinicializar base y reaplicar migraciones: `npm run supabase:reset`
+- detener stack: `pnpm run supabase:stop`
+- reinicializar base y reaplicar migraciones: `pnpm run supabase:reset`
 
 Flujo recomendado:
-- usar `npm run supabase:start` la primera vez o cuando reinicies Docker
-- usar `npm run supabase:status` para obtener el `anon key` local correcto
-- usar `npm run supabase:reset` cuando necesites reconstruir el esquema desde migraciones
+- usar `pnpm run supabase:start` la primera vez o cuando reinicies Docker
+- usar `pnpm run supabase:status` para obtener el `anon key` local correcto
+- usar `pnpm run supabase:reset` cuando necesites reconstruir el esquema desde migraciones
 
 Migraciones actuales del proyecto:
 - `supabase/migrations/001_init.sql`
@@ -109,25 +116,25 @@ Migraciones actuales del proyecto:
 La migracion base actual vive en `supabase/migrations/001_init.sql` e incluye catalogos y tablas iniciales de ingresos y egresos.
 
 ## Scripts
-- `npm run dev`
-- `npm run dev:remote`
-- `npm run build`
-- `npm run preview`
-- `npm run supabase:start`
-- `npm run supabase:status`
-- `npm run supabase:stop`
-- `npm run supabase:reset`
+- `pnpm run dev`
+- `pnpm run dev:remote`
+- `pnpm run build`
+- `pnpm run preview`
+- `pnpm run supabase:start`
+- `pnpm run supabase:status`
+- `pnpm run supabase:stop`
+- `pnpm run supabase:reset`
 
 ## Probar Contra Supabase Remoto
 - crea `.env.remote` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` del proyecto remoto
-- ejecuta `npm run dev:remote`
+- ejecuta `pnpm run dev:remote`
 - Vite cargara `.env.remote` automaticamente porque el script usa `--mode remote`
-- `.env.local` se mantiene intacto para seguir usando el entorno local con `npm run dev`
+- `.env.local` se mantiene intacto para seguir usando el entorno local con `pnpm run dev`
 
 ## Troubleshooting rapido
-- Si `npm run dev` levanta pero no puedes autenticarte, revisa primero `.env.local`.
+- Si `pnpm run dev` levanta pero no puedes autenticarte, revisa primero `.env.local`.
 - Si Supabase no arranca, confirma que Docker Desktop este iniciado.
-- Si cambias migraciones y el schema queda inconsistente, usa `npm run supabase:reset`.
+- Si cambias migraciones y el schema queda inconsistente, usa `pnpm run supabase:reset`.
 - Si los puertos `54321`, `54322` o `54323` estan ocupados, revisa conflictos locales antes de arrancar Supabase.
 
 ## Estado

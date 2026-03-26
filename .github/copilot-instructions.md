@@ -103,14 +103,16 @@ Use `react-data-grid` for tabular data entry. Shared cell editors live in `src/f
 
 ## Development Commands
 ```bash
-npm run dev           # start Vite dev server (local Supabase)
-npm run dev:remote    # start with --mode remote (remote Supabase)
-npm run build         # tsc + vite build
-npm run supabase:start / stop / reset  # manage local Supabase instance
+pnpm run dev           # start Vite dev server (local Supabase)
+pnpm run dev:remote    # start with --mode remote (remote Supabase)
+pnpm run build         # tsc + vite build
+pnpm run supabase:start / stop / reset  # manage local Supabase instance
 ```
 Local Supabase endpoints: API `http://127.0.0.1:54321`, Studio `http://127.0.0.1:54323`.
 
-- Para comandos de Supabase CLI, ejecuta siempre vía `npx supabase ...`; no asumas un binario global `supabase` en PATH.
+- Este repo usa `ignore-scripts=true` en `.npmrc` por seguridad.
+- Para comandos de Supabase CLI, ejecuta vía scripts `pnpm run supabase:*` que habilitan scripts solo para esa ejecución con `pnpm --config.ignore-scripts=false dlx supabase ...`; no asumas un binario global `supabase` en PATH.
+- Para gestión de dependencias y scripts del frontend, usa `pnpm` de forma predeterminada.
 
 ## Key Conventions
 - Keep all new pages in `src/pages/` and register them as lazy routes in `App.tsx`.
