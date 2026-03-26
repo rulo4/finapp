@@ -97,6 +97,9 @@ Use `react-data-grid` for tabular data entry. Shared cell editors live in `src/f
 - `AppSelect` – standalone searchable select component with consistent styling.
 - Date values use ISO-8601 string format (`YYYY-MM-DD`); use helpers from `isoDate.ts`.
 - Siempre utiliza la dependencia instalada `react-select` para dropdowns/selects; no introducir selects custom ni usar `<select>` nativo salvo que exista una limitación técnica clara.
+- En módulos de inversiones, cualquier tabla de datos (captura o lectura) debe implementarse con `react-data-grid`; no usar tablas HTML custom para vistas tabulares.
+- Los filtros de tabla deben seguir el patrón existente de headers (`renderHeaderCell` + `grid-header-filter` / `grid-header-filter__input`) para mantener consistencia entre compras, ventas, dividendos y holdings.
+- Si se solicita sorting o reordenamiento de columnas, implementarlo de forma explícita y controlada en `DataGrid` (`sortColumns`, `onSortColumnsChange`, `onColumnsReorder`) y limitarlo a las columnas requeridas por la historia.
 
 ## Development Commands
 ```bash

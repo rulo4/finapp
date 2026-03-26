@@ -1079,34 +1079,6 @@ textarea {
   color: #b91c1c;
 }
 
-.holdings-filter {
-  display: grid;
-  gap: 4px;
-  min-inline-size: 180px;
-}
-
-.holdings-filter__label {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.holdings-filter__input {
-  inline-size: 100%;
-  min-inline-size: 0;
-  block-size: 34px;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 0 10px;
-  background: #fff;
-  color: #0f172a;
-  font: inherit;
-}
-
-.holdings-filter__input:focus {
-  outline: 2px solid rgba(37, 99, 235, 0.2);
-  border-color: #2563eb;
-}
-
 .grid-header-filter-cell {
   line-height: normal;
   padding: 0;
