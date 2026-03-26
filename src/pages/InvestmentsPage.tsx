@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle, type SortColumn } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString } from '../features/shared/isoDate';
 import {
@@ -50,12 +50,34 @@ type InvestmentGridRow = {
   notes: string;
 };
 
+const INVESTMENT_COLUMN_ORDER = ['actions', 'entryDate', 'entityId', 'currencyCode', 'amountOriginal', 'fxRateToMxn', 'amountMxn', 'notes'] as const;
+
+type InvestmentColumnKey = (typeof INVESTMENT_COLUMN_ORDER)[number];
+
 type InstrumentSummaryRow = {
   entityId: string;
   entityName: string;
   depositsLabel: string;
+  depositsValue: number;
   withdrawalsLabel: string;
+  withdrawalsValue: number;
   netLabel: string;
+  netValue: number;
+  portfolioWeightLabel: string;
+  portfolioWeightValue: number | null;
+};
+
+const SUMMARY_GRID_ROW_HEIGHT = 34;
+const SUMMARY_COLUMN_ORDER = ['entityName', 'depositsLabel', 'withdrawalsLabel', 'netLabel', 'portfolioWeightLabel'] as const;
+
+type SummaryColumnKey = (typeof SUMMARY_COLUMN_ORDER)[number];
+
+type InstrumentSummaryTotalRow = {
+  id: 'total';
+  totalDepositsLabel: string;
+  totalWithdrawalsLabel: string;
+  totalNetLabel: string;
+  totalWeightLabel: string;
 };
 
 const GRID_ROW_HEIGHT = 30;
@@ -63,6 +85,32 @@ const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 180;
+
+function formatPercent(value: number | null) {
+  if (value == null || !Number.isFinite(value)) {
+    return '—';
+  }
+
+  return new Intl.NumberFormat('es-MX', {
+    style: 'percent',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function reorderColumns<T extends string>(order: readonly T[], sourceKey: string, targetKey: string) {
+  const sourceIndex = order.findIndex((key) => key === sourceKey);
+  const targetIndex = order.findIndex((key) => key === targetKey);
+
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return [...order];
+  }
+
+  const nextOrder = [...order];
+  const [source] = nextOrder.splice(sourceIndex, 1);
+  nextOrder.splice(targetIndex, 0, source);
+  return nextOrder as T[];
+}
 
 function normalizeInvestmentMovement(row: InvestmentMovement): InvestmentMovementRow {
   const relation = Array.isArray(row.investment_entities) ? row.investment_entities[0] ?? null : row.investment_entities;
@@ -205,6 +253,9 @@ export function InvestmentsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
+  const [investmentColumnOrder, setInvestmentColumnOrder] = useState<readonly InvestmentColumnKey[]>(INVESTMENT_COLUMN_ORDER);
+  const [summaryColumnOrder, setSummaryColumnOrder] = useState<readonly SummaryColumnKey[]>(SUMMARY_COLUMN_ORDER);
+  const [summarySortColumns, setSummarySortColumns] = useState<readonly SortColumn[]>([]);
   const rowsRef = useRef<InvestmentGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, InvestmentGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
@@ -523,24 +574,134 @@ export function InvestmentsPage() {
       summaryByEntity.set(row.entityId, summary);
     }
 
-    return [...summaryByEntity.entries()]
-      .map(([entityId, summary]) => ({
-        entityId,
-        entityName: summary.entityName,
-        depositsLabel: formatCurrencyTotal(summary.deposits),
-        withdrawalsLabel: formatCurrencyTotal(summary.withdrawals),
-        netLabel: formatCurrencyTotal(summary.net),
+    const summaryRows = [...summaryByEntity.entries()].map(([entityId, summary]) => ({
+      entityId,
+      entityName: summary.entityName,
+      depositsLabel: formatCurrencyTotal(summary.deposits),
+      depositsValue: summary.deposits,
+      withdrawalsLabel: formatCurrencyTotal(summary.withdrawals),
+      withdrawalsValue: summary.withdrawals,
+      netLabel: formatCurrencyTotal(summary.net),
+      netValue: summary.net,
+      portfolioWeightLabel: '—',
+      portfolioWeightValue: null,
+    }));
+
+    const totalNet = summaryRows.reduce((sum, row) => sum + row.netValue, 0);
+
+    return summaryRows
+      .map((row) => ({
+        ...row,
+        portfolioWeightValue: totalNet > 0 ? row.netValue / totalNet : null,
+        portfolioWeightLabel: formatPercent(totalNet > 0 ? row.netValue / totalNet : null),
       }))
       .sort((left, right) => left.entityName.localeCompare(right.entityName, 'es'));
   }, [entityLabelById, rows]);
 
-  const columns = useMemo<readonly Column<InvestmentGridRow>[]>(() => [
-    {
+  const summaryTotalRow = useMemo<InstrumentSummaryTotalRow>(() => {
+    const totalDeposits = instrumentSummaryRows.reduce((sum, row) => sum + row.depositsValue, 0);
+    const totalWithdrawals = instrumentSummaryRows.reduce((sum, row) => sum + row.withdrawalsValue, 0);
+    const totalNet = instrumentSummaryRows.reduce((sum, row) => sum + row.netValue, 0);
+    return {
+      id: 'total',
+      totalDepositsLabel: formatCurrencyTotal(totalDeposits),
+      totalWithdrawalsLabel: formatCurrencyTotal(totalWithdrawals),
+      totalNetLabel: formatCurrencyTotal(totalNet),
+      totalWeightLabel: totalNet > 0 ? formatPercent(1) : '—',
+    };
+  }, [instrumentSummaryRows]);
+
+  const sortedInstrumentSummaryRows = useMemo(() => {
+    if (summarySortColumns.length === 0) {
+      return instrumentSummaryRows;
+    }
+
+    return [...instrumentSummaryRows].sort((left, right) => {
+      for (const sort of summarySortColumns) {
+        const direction = sort.direction === 'ASC' ? 1 : -1;
+        let result = 0;
+
+        if (sort.columnKey === 'entityName') {
+          result = left.entityName.localeCompare(right.entityName, 'es-MX');
+        } else if (sort.columnKey === 'depositsLabel') {
+          result = left.depositsValue - right.depositsValue;
+        } else if (sort.columnKey === 'withdrawalsLabel') {
+          result = left.withdrawalsValue - right.withdrawalsValue;
+        } else if (sort.columnKey === 'netLabel') {
+          result = left.netValue - right.netValue;
+        } else if (sort.columnKey === 'portfolioWeightLabel') {
+          const leftValue = left.portfolioWeightValue;
+          const rightValue = right.portfolioWeightValue;
+          if (leftValue == null && rightValue == null) result = 0;
+          else if (leftValue == null) result = 1;
+          else if (rightValue == null) result = -1;
+          else result = leftValue - rightValue;
+        }
+
+        if (result !== 0) {
+          return result * direction;
+        }
+      }
+
+      return 0;
+    });
+  }, [instrumentSummaryRows, summarySortColumns]);
+
+  const summaryColumnsByKey = useMemo<Record<SummaryColumnKey, Column<InstrumentSummaryRow, InstrumentSummaryTotalRow>>>(() => ({
+    entityName: {
+      key: 'entityName',
+      name: 'Instrumento',
+      width: 220,
+      draggable: true,
+      sortable: true,
+      renderSummaryCell: () => <strong>Total</strong>,
+    },
+    depositsLabel: {
+      key: 'depositsLabel',
+      name: 'Abonos',
+      width: 138,
+      draggable: true,
+      sortable: true,
+      renderSummaryCell: ({ row }) => <strong>{row.totalDepositsLabel}</strong>,
+    },
+    withdrawalsLabel: {
+      key: 'withdrawalsLabel',
+      name: 'Retiros',
+      width: 138,
+      draggable: true,
+      sortable: true,
+      renderSummaryCell: ({ row }) => <strong>{row.totalWithdrawalsLabel}</strong>,
+    },
+    netLabel: {
+      key: 'netLabel',
+      name: 'Neto',
+      width: 138,
+      draggable: true,
+      sortable: true,
+      renderSummaryCell: ({ row }) => <strong>{row.totalNetLabel}</strong>,
+    },
+    portfolioWeightLabel: {
+      key: 'portfolioWeightLabel',
+      name: 'Peso',
+      width: 110,
+      draggable: true,
+      sortable: true,
+      renderSummaryCell: ({ row }) => <strong>{row.totalWeightLabel}</strong>,
+    },
+  }), []);
+
+  const summaryColumns = useMemo<readonly Column<InstrumentSummaryRow, InstrumentSummaryTotalRow>[]>(
+    () => summaryColumnOrder.map((key) => summaryColumnsByKey[key]),
+    [summaryColumnOrder, summaryColumnsByKey],
+  );
+
+  const investmentColumnsByKey = useMemo<Record<InvestmentColumnKey, Column<InvestmentGridRow>>>(() => ({
+    actions: {
       key: 'actions',
       name: '',
       width: ACTION_COLUMN_WIDTH,
-      frozen: true,
       editable: false,
+      draggable: true,
       renderCell: ({ row }) => {
         const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
         const actionCount = showPrimaryActions ? 2 : 1;
@@ -597,51 +758,63 @@ export function InvestmentsPage() {
         );
       },
     },
-    {
+    entryDate: {
       key: 'entryDate',
       name: 'Fecha',
       width: DEFAULT_COLUMN_WIDTH,
+      draggable: true,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
-    {
+    entityId: {
       key: 'entityId',
       name: 'Entidad',
       width: 170,
+      draggable: true,
       renderCell: ({ row }) => entityLabelById.get(row.entityId) ?? '-',
       renderEditCell: (props) => <SelectCellEditor {...props} options={entityOptions} />,
     },
-    {
+    currencyCode: {
       key: 'currencyCode',
       name: 'Moneda',
       width: 88,
+      draggable: true,
       renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
     },
-    {
+    amountOriginal: {
       key: 'amountOriginal',
       name: 'Monto',
       width: AMOUNT_COLUMN_WIDTH,
+      draggable: true,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.000001" placeholder="1000 o -1000" />,
     },
-    {
+    fxRateToMxn: {
       key: 'fxRateToMxn',
       name: 'FX',
       width: 86,
+      draggable: true,
       renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1" />,
     },
-    {
+    amountMxn: {
       key: 'amountMxn',
       name: 'MXN',
       width: AMOUNT_COLUMN_WIDTH,
       editable: false,
+      draggable: true,
     },
-    {
+    notes: {
       key: 'notes',
       name: 'Notas',
       width: NOTES_COLUMN_WIDTH,
+      draggable: true,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  }), [entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
+
+  const columns = useMemo<readonly Column<InvestmentGridRow>[]>(
+    () => investmentColumnOrder.map((key) => investmentColumnsByKey[key]),
+    [investmentColumnOrder, investmentColumnsByKey],
+  );
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
@@ -720,16 +893,27 @@ export function InvestmentsPage() {
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
+              if (!args.row || args.rowIdx < 0) {
+                return;
+              }
+
               if (args.column.renderEditCell) {
                 args.selectCell(true);
               }
             }}
             onSelectedCellChange={(args) => {
+              if (args.rowIdx < 0) {
+                return;
+              }
+
               if (args.row && args.column.renderEditCell) {
                 focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
               }
             }}
-            defaultColumnOptions={{ resizable: true }}
+            defaultColumnOptions={{ resizable: true, draggable: true }}
+            onColumnsReorder={(sourceColumnKey, targetColumnKey) => {
+              setInvestmentColumnOrder((currentOrder) => reorderColumns(currentOrder, sourceColumnKey, targetColumnKey));
+            }}
             rowClass={(row) => {
               if (row.status === 'saving') return 'row-saving';
               if (row.status === 'error') return 'row-error';
@@ -737,7 +921,7 @@ export function InvestmentsPage() {
               if (row.status === 'dirty') return 'row-dirty';
               return 'row-saved';
             }}
-            style={{ blockSize: 500 }}
+            style={{ blockSize: 600 }}
           />
         </div>
 
@@ -749,22 +933,24 @@ export function InvestmentsPage() {
               </div>
             </div>
 
-            <div className="finance-table finance-table--investments-summary" aria-label="Resumen de abonos, retiros y saldo neto por instrumento">
-              <div className="finance-table__head">
-                <span>Instrumento</span>
-                <span>Abonos</span>
-                <span>Retiros</span>
-                <span>Neto</span>
-              </div>
-
-              {instrumentSummaryRows.map((row) => (
-                <div key={row.entityId} className="finance-table__row">
-                  <span>{row.entityName}</span>
-                  <span>{row.depositsLabel}</span>
-                  <span>{row.withdrawalsLabel}</span>
-                  <span>{row.netLabel}</span>
-                </div>
-              ))}
+            <div className="grid-wrapper">
+              <DataGrid
+                columns={summaryColumns}
+                rows={sortedInstrumentSummaryRows}
+                rowHeight={SUMMARY_GRID_ROW_HEIGHT}
+                headerRowHeight={SUMMARY_GRID_ROW_HEIGHT}
+                rowKeyGetter={(row) => row.entityId}
+                defaultColumnOptions={{ resizable: true, draggable: true }}
+                sortColumns={summarySortColumns}
+                onSortColumnsChange={setSummarySortColumns}
+                onColumnsReorder={(sourceColumnKey, targetColumnKey) => {
+                  setSummaryColumnOrder((currentOrder) => reorderColumns(currentOrder, sourceColumnKey, targetColumnKey));
+                }}
+                topSummaryRows={[summaryTotalRow]}
+                bottomSummaryRows={[summaryTotalRow]}
+                rowClass={() => 'row-saved'}
+                style={{ blockSize: Math.min(800, Math.max(188, (sortedInstrumentSummaryRows.length + 3) * SUMMARY_GRID_ROW_HEIGHT + 2)) }}
+              />
             </div>
           </div>
         ) : null}
