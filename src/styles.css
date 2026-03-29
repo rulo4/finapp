@@ -918,6 +918,53 @@ textarea {
   width: 100%;
 }
 
+.app-date-picker__calendar .react-datepicker__header {
+  padding-top: 8px;
+}
+
+.app-date-picker__header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 8px 8px;
+}
+
+.app-date-picker__nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.app-date-picker__nav:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.app-date-picker__select {
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 0.78rem;
+}
+
+.app-date-picker__select--month {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.app-date-picker__select--year {
+  flex: 0 0 88px;
+}
+
 .dashboard-filters__control,
 .mobile-form__control {
   width: 100%;

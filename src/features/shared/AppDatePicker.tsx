@@ -1,6 +1,7 @@
 import { forwardRef, type InputHTMLAttributes, useMemo } from 'react';
-import DatePicker from 'react-datepicker';
 import { format } from 'date-fns';
+import { es } from 'date-fns/locale';
+import DatePicker, { type ReactDatePickerCustomHeaderProps } from 'react-datepicker';
 import { ISO_DATE_PLACEHOLDER, isIsoDateString } from './isoDate';
 
 type AppDatePickerProps = {
@@ -30,6 +31,21 @@ function toDate(value: string) {
   return new Date(year, month - 1, day);
 }
 
+const monthLabelFormatter = new Intl.DateTimeFormat('es-MX', { month: 'long' });
+
+function buildMonthLabels() {
+  return Array.from({ length: 12 }, (_, monthIndex) => monthLabelFormatter.format(new Date(2024, monthIndex, 1)));
+}
+
+function buildYearOptions(minDate: Date | null, maxDate: Date | null, selectedDate: Date | null) {
+  const currentYear = new Date().getFullYear();
+  const selectedYear = selectedDate?.getFullYear() ?? currentYear;
+  const startYear = minDate?.getFullYear() ?? Math.min(1990, selectedYear - 15);
+  const endYear = maxDate?.getFullYear() ?? Math.max(currentYear + 5, selectedYear + 5);
+
+  return Array.from({ length: endYear - startYear + 1 }, (_, index) => startYear + index);
+}
+
 const DateInput = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputElement>>(function DateInput(props, ref) {
   const { className, ...rest } = props;
 
@@ -52,6 +68,65 @@ export function AppDatePicker({
   const selectedDate = useMemo(() => toDate(value), [value]);
   const minDate = useMemo(() => toDate(min ?? ''), [min]);
   const maxDate = useMemo(() => toDate(max ?? ''), [max]);
+  const monthLabels = useMemo(() => buildMonthLabels(), []);
+  const yearOptions = useMemo(() => buildYearOptions(minDate, maxDate, selectedDate), [maxDate, minDate, selectedDate]);
+
+  function renderHeader({
+    date,
+    changeMonth,
+    changeYear,
+    decreaseMonth,
+    increaseMonth,
+    prevMonthButtonDisabled,
+    nextMonthButtonDisabled,
+  }: ReactDatePickerCustomHeaderProps) {
+    return (
+      <div className="app-date-picker__header">
+        <button
+          type="button"
+          className="app-date-picker__nav"
+          onClick={decreaseMonth}
+          disabled={prevMonthButtonDisabled}
+          aria-label="Mes anterior"
+        >
+          &lt;
+        </button>
+        <select
+          className="app-date-picker__select app-date-picker__select--month"
+          value={date.getMonth()}
+          onChange={(event) => changeMonth(Number(event.target.value))}
+          aria-label="Mes"
+        >
+          {monthLabels.map((monthLabel, monthIndex) => (
+            <option key={monthLabel} value={monthIndex}>
+              {monthLabel}
+            </option>
+          ))}
+        </select>
+        <select
+          className="app-date-picker__select app-date-picker__select--year"
+          value={date.getFullYear()}
+          onChange={(event) => changeYear(Number(event.target.value))}
+          aria-label="Año"
+        >
+          {yearOptions.map((year) => (
+            <option key={year} value={year}>
+              {year}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="app-date-picker__nav"
+          onClick={increaseMonth}
+          disabled={nextMonthButtonDisabled}
+          aria-label="Mes siguiente"
+        >
+          &gt;
+        </button>
+      </div>
+    );
+  }
 
   return (
     <DatePicker
@@ -74,10 +149,13 @@ export function AppDatePicker({
       autoFocus={autoFocus}
       minDate={minDate ?? undefined}
       maxDate={maxDate ?? undefined}
+      locale={es}
+      renderCustomHeader={renderHeader}
       portalId="root"
       popperPlacement="bottom-start"
       showPopperArrow={false}
       customInput={<DateInput className={className} aria-label={ariaLabel} />}
+      calendarClassName="app-date-picker__calendar"
       calendarStartDay={1}
     />
   );
