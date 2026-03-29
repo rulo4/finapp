@@ -16,7 +16,10 @@ export type Security = {
   id: string;
   ticker: string;
   company_name: string;
+  sector?: string | null;
+  industry?: string | null;
   exchange_code: string | null;
+  instrument_type?: string | null;
   is_active: boolean;
 };
 
