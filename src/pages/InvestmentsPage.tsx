@@ -314,7 +314,7 @@ export function InvestmentsPage() {
     rowsRef.current = loadedRows;
     setEntities(nextEntities);
     setRows(loadedRows);
-    setFeedback(nextEntities.length > 0 ? null : 'Primero crea al menos una entidad de inversion en Catálogos.');
+    setFeedback(nextEntities.length > 0 ? null : 'Primero crea al menos una entidad de inversión en Catálogos.');
     setIsLoading(false);
   }, [activeDateRange.end, activeDateRange.start]);
 
@@ -843,7 +843,7 @@ export function InvestmentsPage() {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar movimientos de inversion por fecha">
+            <div className="income-period-filter" role="group" aria-label="Filtrar movimientos de inversión por fecha">
               <button
                 type="button"
                 className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
@@ -871,7 +871,7 @@ export function InvestmentsPage() {
             </div>
           </div>
 
-          <div className="badge-row" aria-label="Resumen de movimientos de inversion visibles">
+          <div className="badge-row" aria-label="Resumen de movimientos de inversión visibles">
             <span className="badge">+ abono / - retiro</span>
             <span className="badge">{visibleSummary.count} regs</span>
             <span className="badge">Abonos {visibleSummary.depositsLabel}</span>

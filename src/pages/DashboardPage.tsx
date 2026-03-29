@@ -1,37 +1,123 @@
 import { useEffect, useMemo, useState } from 'react';
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
+import { faChartColumn, faChartPie } from '@fortawesome/free-solid-svg-icons';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import {
   checkSupabaseConnection,
-  getSupabaseConfig,
   isSupabaseConfigured,
   supabase,
 } from '../lib/supabase/client';
 import {
-  formatLocalDateAsIsoString,
-  getTodayIsoDate,
-} from '../features/shared/isoDate';
+  type InvestmentDateFilterMode,
+  type Security,
+  formatCurrencyTotal,
+  getDateRange,
+  getTodayDate,
+} from '../features/investments/shared';
+import { summarizeOpenHoldings, type StockBuyMovement, type StockSellMovement } from '../features/investments/positionMetrics';
 
 type IncomeDashboardRow = {
-  id: string;
   entry_date: string;
   amount_mxn: number | null;
   income_sources: { name: string } | { name: string }[] | null;
 };
 
 type ExpenseDashboardRow = {
-  id: string;
   entry_date: string;
-  concept: string;
   total_amount_mxn: number;
   expense_categories: { name: string } | { name: string }[] | null;
 };
 
-type ActivityItem = {
+type SecurityDashboardRow = Security & {
+  sector: string | null;
+  industry: string | null;
+  instrument_type: string | null;
+};
+
+type StockBuyDashboardRow = {
   id: string;
-  kind: 'income' | 'expense';
-  title: string;
-  subtitle: string;
-  amountMxn: number;
-  date: string;
+  security_id: string;
+  trade_date: string;
+  quantity: number;
+  unit_price_original: number;
+  total_amount_mxn: number;
+  created_at: string | null;
+};
+
+type StockSellDashboardRow = {
+  id: string;
+  security_id: string;
+  trade_date: string;
+  quantity: number;
+  total_amount_mxn: number;
+  created_at: string | null;
+  stock_buy_id: string | null;
+  sell_group_id: string | null;
+};
+
+type DashboardTabKey = 'income' | 'expense' | 'investment' | 'security';
+type DashboardChartVariant = 'pie' | 'bar';
+
+type DashboardChartDatum = {
+  key: string;
+  label: string;
+  value: number;
+  share: number;
+  color: string;
+  note?: string;
+};
+
+type DashboardData = {
+  incomeBySource: DashboardChartDatum[];
+  expensesByCategory: DashboardChartDatum[];
+  investmentByInstrument: DashboardChartDatum[];
+  investmentsBySecurity: DashboardChartDatum[];
+  investmentsBySector: DashboardChartDatum[];
+  investmentsByIndustry: DashboardChartDatum[];
+};
+
+type DashboardTooltipPayload = {
+  active?: boolean;
+  payload?: Array<{ payload: DashboardChartDatum }>;
+};
+
+const DASHBOARD_TABS: Array<{ key: DashboardTabKey; label: string }> = [
+  { key: 'income', label: 'Ingresos' },
+  { key: 'expense', label: 'Egresos' },
+  { key: 'investment', label: 'Inversión' },
+  { key: 'security', label: 'Securities' },
+];
+
+const CHART_COLORS = ['#0f766e', '#2563eb', '#ea580c', '#7c3aed', '#db2777', '#4f46e5', '#0891b2', '#65a30d', '#dc2626', '#ca8a04'];
+
+const INSTRUMENT_LABELS: Record<string, string> = {
+  stock: 'Acciones',
+  etf: 'ETF',
+  fibra: 'FIBRA',
+  reit: 'REIT',
+  adr: 'ADR',
+  fund: 'Fondo',
+  other: 'Otro',
+};
+
+const EMPTY_DASHBOARD_DATA: DashboardData = {
+  incomeBySource: [],
+  expensesByCategory: [],
+  investmentByInstrument: [],
+  investmentsBySecurity: [],
+  investmentsBySector: [],
+  investmentsByIndustry: [],
 };
 
 function pickRelationName(relation: { name: string } | { name: string }[] | null) {
@@ -42,91 +128,291 @@ function pickRelationName(relation: { name: string } | { name: string }[] | null
   return Array.isArray(relation) ? relation[0]?.name ?? null : relation.name;
 }
 
-function getMonthWindow() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  const end = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+function normalizeLabel(value: string | null | undefined, fallbackLabel: string) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : fallbackLabel;
+}
+
+function normalizeInstrumentLabel(value: string | null | undefined) {
+  if (!value) {
+    return 'Sin clasificar';
+  }
+
+  return INSTRUMENT_LABELS[value] ?? 'Sin clasificar';
+}
+
+function formatCompactCurrency(value: number) {
+  if (Math.abs(value) >= 1000000) {
+    return `$${(value / 1000000).toFixed(1)}M`;
+  }
+
+  if (Math.abs(value) >= 1000) {
+    return `$${(value / 1000).toFixed(1)}k`;
+  }
+
+  return `$${Math.round(value)}`;
+}
+
+const percentageFormatter = new Intl.NumberFormat('es-MX', {
+  style: 'percent',
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+});
+
+function buildChartData(entries: Array<{ label: string; value: number; note?: string }>) {
+  const groupedEntries = new Map<string, { label: string; value: number; note?: string }>();
+
+  for (const entry of entries) {
+    if (!Number.isFinite(entry.value) || entry.value <= 0) {
+      continue;
+    }
+
+    const existing = groupedEntries.get(entry.label);
+    groupedEntries.set(entry.label, {
+      label: entry.label,
+      value: Number(((existing?.value ?? 0) + entry.value).toFixed(6)),
+      note: existing?.note ?? entry.note,
+    });
+  }
+
+  const sortedEntries = [...groupedEntries.values()].sort((left, right) => right.value - left.value);
+  const total = sortedEntries.reduce((sum, entry) => sum + entry.value, 0);
+
+  return sortedEntries.map((entry, index) => ({
+    key: `${entry.label}-${index}`,
+    label: entry.label,
+    value: entry.value,
+    share: total > 0 ? entry.value / total : 0,
+    color: CHART_COLORS[index % CHART_COLORS.length],
+    note: entry.note,
+  } satisfies DashboardChartDatum));
+}
+
+function buildHoldingChartData(
+  securities: SecurityDashboardRow[],
+  buyRows: StockBuyDashboardRow[],
+  sellRows: StockSellDashboardRow[],
+  snapshotEndDate: string,
+) {
+  const filteredBuys = buyRows
+    .filter((row) => row.trade_date <= snapshotEndDate)
+    .map((row) => ({
+      id: row.id,
+      securityId: row.security_id,
+      tradeDate: row.trade_date,
+      quantity: Number(row.quantity),
+      unitPriceOriginal: Number(row.unit_price_original),
+      totalAmountMxn: Number(row.total_amount_mxn),
+      createdAt: row.created_at,
+    })) satisfies StockBuyMovement[];
+  const filteredSells = sellRows
+    .filter((row) => row.trade_date <= snapshotEndDate)
+    .map((row) => ({
+      id: row.id,
+      securityId: row.security_id,
+      tradeDate: row.trade_date,
+      quantity: Number(row.quantity),
+      totalAmountMxn: Number(row.total_amount_mxn),
+      createdAt: row.created_at,
+      stockBuyId: row.stock_buy_id,
+      sellGroupId: row.sell_group_id,
+    })) satisfies StockSellMovement[];
+  const securityById = new Map(securities.map((security) => [security.id, security]));
+  const holdingSummaries = summarizeOpenHoldings(filteredBuys, filteredSells);
 
   return {
-    start: formatLocalDateAsIsoString(start),
-    end: formatLocalDateAsIsoString(end),
+    investmentByInstrument: buildChartData(
+      holdingSummaries.map((holding) => ({
+        label: normalizeInstrumentLabel(securityById.get(holding.securityId)?.instrument_type),
+        value: holding.remainingFifoCostBasisMxn,
+      })),
+    ),
+    investmentsBySecurity: buildChartData(
+      holdingSummaries.map((holding) => {
+        const security = securityById.get(holding.securityId);
+
+        return {
+          label: security?.ticker?.trim() || 'Valor desconocido',
+          value: holding.remainingFifoCostBasisMxn,
+        };
+      }),
+    ),
+    investmentsBySector: buildChartData(
+      holdingSummaries.map((holding) => ({
+        label: normalizeLabel(securityById.get(holding.securityId)?.sector, 'Sin clasificar'),
+        value: holding.remainingFifoCostBasisMxn,
+      })),
+    ),
+    investmentsByIndustry: buildChartData(
+      holdingSummaries.map((holding) => ({
+        label: normalizeLabel(securityById.get(holding.securityId)?.industry, 'Sin clasificar'),
+        value: holding.remainingFifoCostBasisMxn,
+      })),
+    ),
   };
 }
 
-function getYearWindow() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), 0, 1);
+function DashboardTooltip({ active, payload }: DashboardTooltipPayload) {
+  if (!active || !payload?.length) {
+    return null;
+  }
 
-  return {
-    start: formatLocalDateAsIsoString(start),
-    end: getTodayDate(),
-  };
+  const item = payload[0]?.payload;
+  if (!item) {
+    return null;
+  }
+
+  return (
+    <div className="dashboard-tooltip">
+      <strong>{item.label}</strong>
+      {item.note ? <span>{item.note}</span> : null}
+      <span>{formatCurrencyTotal(item.value)}</span>
+      <span>{percentageFormatter.format(item.share)}</span>
+    </div>
+  );
 }
 
-function getTodayDate() {
-  return getTodayIsoDate();
+function DashboardChartCard({
+  title,
+  description,
+  data,
+  chartVariant,
+  emptyMessage,
+  showLegend = true,
+  compactMeta = false,
+}: {
+  title: string;
+  description?: string;
+  data: DashboardChartDatum[];
+  chartVariant: DashboardChartVariant;
+  emptyMessage: string;
+  showLegend?: boolean;
+  compactMeta?: boolean;
+}) {
+  const total = data.reduce((sum, item) => sum + item.value, 0);
+  const chartHeight = chartVariant === 'pie' ? 320 : Math.max(280, data.length * 52);
+
+  return (
+    <article className="card dashboard-chart-panel">
+      <div className="dashboard-panel__header">
+        <div>
+          <h3 className="card__title">{title}</h3>
+          {description ? <p className="card__text">{description}</p> : null}
+        </div>
+        <div className={`dashboard-chart-panel__meta ${compactMeta ? 'dashboard-chart-panel__meta--inline' : ''}`}>
+          <span className="dashboard-stat">{data.length || 0} grupos</span>
+          <span className="dashboard-stat dashboard-stat--strong">{formatCurrencyTotal(total)}</span>
+        </div>
+      </div>
+
+      {data.length > 0 ? (
+        <div className={`dashboard-chart dashboard-chart--${chartVariant} ${showLegend ? '' : 'dashboard-chart--legendless'}`}>
+          <div className={`dashboard-chart__visual dashboard-chart__visual--${chartVariant}`} style={{ height: `${chartHeight}px` }}>
+            <ResponsiveContainer width="100%" height="100%">
+              {chartVariant === 'pie' ? (
+                <PieChart>
+                  <Pie
+                    data={data}
+                    dataKey="value"
+                    nameKey="label"
+                    innerRadius={72}
+                    outerRadius={110}
+                    paddingAngle={2}
+                    stroke="#ffffff"
+                    strokeWidth={2}
+                  >
+                    {data.map((item) => (
+                      <Cell key={item.key} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<DashboardTooltip />} />
+                </PieChart>
+              ) : (
+                <BarChart data={data} layout="vertical" margin={{ top: 8, right: 18, bottom: 8, left: 6 }}>
+                  <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" horizontal />
+                  <XAxis
+                    type="number"
+                    tickFormatter={formatCompactCurrency}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                  />
+                  <YAxis
+                    dataKey="label"
+                    type="category"
+                    width={96}
+                    axisLine={false}
+                    tickLine={false}
+                    tick={{ fontSize: 11, fill: '#64748b' }}
+                  />
+                  <Tooltip content={<DashboardTooltip />} />
+                  <Bar dataKey="value" radius={[0, 10, 10, 0]}>
+                    {data.map((item) => (
+                      <Cell key={item.key} fill={item.color} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              )}
+            </ResponsiveContainer>
+          </div>
+
+          {showLegend ? (
+            <ol className="dashboard-legend">
+              {data.map((item) => (
+                <li key={item.key} className="dashboard-legend__item">
+                  <div className="dashboard-legend__label">
+                    <span className="dashboard-legend__dot" style={{ backgroundColor: item.color }} aria-hidden="true" />
+                    <div>
+                      <strong>{item.label}</strong>
+                      {item.note ? <span>{item.note}</span> : null}
+                    </div>
+                  </div>
+                  <div className="dashboard-legend__values">
+                    <strong>{formatCurrencyTotal(item.value)}</strong>
+                    <span>{percentageFormatter.format(item.share)}</span>
+                  </div>
+                </li>
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      ) : (
+        <p className="card__text">{emptyMessage}</p>
+      )}
+    </article>
+  );
 }
-
-type DashboardPeriodMode = 'all' | 'month' | 'year';
-
-const currencyFormatter = new Intl.NumberFormat('es-MX', {
-  style: 'currency',
-  currency: 'MXN',
-  maximumFractionDigits: 2,
-});
-
-const dateFormatter = new Intl.DateTimeFormat('es-MX', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric',
-});
 
 export function DashboardPage() {
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>(
     isSupabaseConfigured() ? 'checking' : 'idle',
   );
-  const [connectionMessage, setConnectionMessage] = useState(
-    isSupabaseConfigured()
-      ? 'Verificando acceso a la base local...'
-      : 'Faltan variables de entorno de Supabase. Usa .env.local para conectar el proyecto.',
-  );
-  const [isMetricsLoading, setIsMetricsLoading] = useState(isSupabaseConfigured());
-  const [dashboardMessage, setDashboardMessage] = useState('Cargando resumen real del usuario autenticado...');
-  const [monthlyIncome, setMonthlyIncome] = useState(0);
-  const [monthlyExpense, setMonthlyExpense] = useState(0);
-  const [netFlow, setNetFlow] = useState(0);
-  const [activeSources, setActiveSources] = useState(0);
-  const [activeCategories, setActiveCategories] = useState(0);
-  const [recentActivity, setRecentActivity] = useState<ActivityItem[]>([]);
-  const [periodMode, setPeriodMode] = useState<DashboardPeriodMode>('month');
-  const { url, anonKeyLoaded } = getSupabaseConfig();
-  const activePeriod = useMemo(() => {
-    if (periodMode === 'month') {
-      return getMonthWindow();
-    }
-
-    if (periodMode === 'year') {
-      return getYearWindow();
-    }
-
-    return {
-      start: '',
-      end: '',
-    };
-  }, [periodMode]);
+  const [isLoading, setIsLoading] = useState(isSupabaseConfigured());
+  const [periodMode, setPeriodMode] = useState<InvestmentDateFilterMode>('month');
+  const [activeTab, setActiveTab] = useState<DashboardTabKey>('income');
+  const [chartVariants, setChartVariants] = useState<Record<DashboardTabKey, DashboardChartVariant>>({
+    income: 'pie',
+    expense: 'pie',
+    investment: 'pie',
+    security: 'bar',
+  });
+  const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD_DATA);
+  const activePeriod = useMemo(() => getDateRange(periodMode), [periodMode]);
+  const snapshotEndDate = activePeriod.end || getTodayDate();
+  const activeChartVariant = chartVariants[activeTab];
+  const nextChartVariant = activeChartVariant === 'pie' ? 'bar' : 'pie';
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
-      return;
       return;
     }
 
     let cancelled = false;
 
-    async function loadConnectionStatus() {
+    async function loadDashboardData() {
       setConnectionStatus('checking');
-      setIsMetricsLoading(true);
-      setDashboardMessage('Cargando resumen del periodo seleccionado...');
+      setIsLoading(true);
 
       const result = await checkSupabaseConnection();
 
@@ -135,128 +421,151 @@ export function DashboardPage() {
       }
 
       setConnectionStatus(result.ok ? 'ok' : 'error');
-      setConnectionMessage(result.message);
 
       if (!result.ok || !supabase) {
-        setIsMetricsLoading(false);
+        setIsLoading(false);
         return;
       }
 
-      let incomePeriodQuery = supabase.from('income_entries').select('amount_mxn, entry_date');
-      let expensePeriodQuery = supabase.from('expense_entries').select('total_amount_mxn, entry_date');
-      let incomeRecentQuery = supabase
-        .from('income_entries')
-        .select('id, entry_date, amount_mxn, income_sources(name)')
-        .order('entry_date', { ascending: false })
-        .limit(5);
-      let expenseRecentQuery = supabase
-        .from('expense_entries')
-        .select('id, entry_date, concept, total_amount_mxn, expense_categories(name)')
-        .order('entry_date', { ascending: false })
-        .limit(5);
+      let incomeQuery = supabase.from('income_entries').select('entry_date, amount_mxn, income_sources(name)');
+      let expenseQuery = supabase.from('expense_entries').select('entry_date, total_amount_mxn, expense_categories(name)');
 
       if (activePeriod.start) {
-        incomePeriodQuery = incomePeriodQuery.gte('entry_date', activePeriod.start);
-        expensePeriodQuery = expensePeriodQuery.gte('entry_date', activePeriod.start);
-        incomeRecentQuery = incomeRecentQuery.gte('entry_date', activePeriod.start);
-        expenseRecentQuery = expenseRecentQuery.gte('entry_date', activePeriod.start);
+        incomeQuery = incomeQuery.gte('entry_date', activePeriod.start);
+        expenseQuery = expenseQuery.gte('entry_date', activePeriod.start);
       }
 
       if (activePeriod.end) {
-        incomePeriodQuery = incomePeriodQuery.lte('entry_date', activePeriod.end);
-        expensePeriodQuery = expensePeriodQuery.lte('entry_date', activePeriod.end);
-        incomeRecentQuery = incomeRecentQuery.lte('entry_date', activePeriod.end);
-        expenseRecentQuery = expenseRecentQuery.lte('entry_date', activePeriod.end);
+        incomeQuery = incomeQuery.lte('entry_date', activePeriod.end);
+        expenseQuery = expenseQuery.lte('entry_date', activePeriod.end);
       }
 
-      const [incomePeriod, expensePeriod, incomeRecent, expenseRecent, sourcesResult, categoriesResult] =
-        await Promise.all([
-          incomePeriodQuery,
-          expensePeriodQuery,
-          incomeRecentQuery,
-          expenseRecentQuery,
-          supabase.from('income_sources').select('id', { count: 'exact', head: true }).eq('is_active', true),
-          supabase.from('expense_categories').select('id', { count: 'exact', head: true }).eq('is_active', true),
-        ]);
+      const [incomeResult, expenseResult, securitiesResult, buyResult, sellResult] = await Promise.all([
+        incomeQuery,
+        expenseQuery,
+        supabase
+          .from('securities')
+          .select('id, ticker, company_name, sector, industry, exchange_code, instrument_type, is_active')
+          .order('ticker', { ascending: true }),
+        supabase
+          .from('stock_buys')
+          .select('id, security_id, trade_date, quantity, unit_price_original, total_amount_mxn, created_at')
+          .lte('trade_date', snapshotEndDate),
+        supabase
+          .from('stock_sells')
+          .select('id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id')
+          .lte('trade_date', snapshotEndDate),
+      ]);
 
       if (cancelled) {
         return;
       }
 
-      const firstError = [
-        incomePeriod.error,
-        expensePeriod.error,
-        incomeRecent.error,
-        expenseRecent.error,
-        sourcesResult.error,
-        categoriesResult.error,
-      ].find(Boolean);
+      const firstError = [incomeResult.error, expenseResult.error, securitiesResult.error, buyResult.error, sellResult.error].find(Boolean);
 
       if (firstError) {
-        setDashboardMessage(`No fue posible cargar el resumen: ${firstError.message}`);
-        setIsMetricsLoading(false);
+        setDashboardData(EMPTY_DASHBOARD_DATA);
+        setIsLoading(false);
         return;
       }
 
-      const monthlyIncomeValue = ((incomePeriod.data as Array<{ amount_mxn: number | null }>) ?? []).reduce(
-        (sum, row) => sum + Number(row.amount_mxn ?? 0),
-        0,
+      const incomeBySource = buildChartData(
+        ((incomeResult.data as IncomeDashboardRow[]) ?? []).map((row) => ({
+          label: normalizeLabel(pickRelationName(row.income_sources), 'Sin fuente'),
+          value: Number(row.amount_mxn ?? 0),
+        })),
       );
-      const monthlyExpenseValue = ((expensePeriod.data as Array<{ total_amount_mxn: number }>) ?? []).reduce(
-        (sum, row) => sum + Number(row.total_amount_mxn ?? 0),
-        0,
+      const expensesByCategory = buildChartData(
+        ((expenseResult.data as ExpenseDashboardRow[]) ?? []).map((row) => ({
+          label: normalizeLabel(pickRelationName(row.expense_categories), 'Sin categoria'),
+          value: Number(row.total_amount_mxn ?? 0),
+        })),
       );
-      const incomeActivity = ((incomeRecent.data as IncomeDashboardRow[]) ?? []).map((row) => ({
-        id: `income-${row.id}`,
-        kind: 'income' as const,
-        title: pickRelationName(row.income_sources) ?? 'Ingreso',
-        subtitle: 'Ingreso registrado',
-        amountMxn: Number(row.amount_mxn ?? 0),
-        date: row.entry_date,
-      }));
-      const expenseActivity = ((expenseRecent.data as ExpenseDashboardRow[]) ?? []).map((row) => ({
-        id: `expense-${row.id}`,
-        kind: 'expense' as const,
-        title: row.concept,
-        subtitle: pickRelationName(row.expense_categories) ?? 'Egreso registrado',
-        amountMxn: Number(row.total_amount_mxn ?? 0),
-        date: row.entry_date,
-      }));
 
-      setMonthlyIncome(monthlyIncomeValue);
-      setMonthlyExpense(monthlyExpenseValue);
-      setNetFlow(monthlyIncomeValue - monthlyExpenseValue);
-      setActiveSources(sourcesResult.count ?? 0);
-      setActiveCategories(categoriesResult.count ?? 0);
-      setRecentActivity(
-        [...incomeActivity, ...expenseActivity]
-          .sort((left, right) => right.date.localeCompare(left.date))
-          .slice(0, 6),
+      const holdingsCharts = buildHoldingChartData(
+        (securitiesResult.data as SecurityDashboardRow[]) ?? [],
+        (buyResult.data as StockBuyDashboardRow[]) ?? [],
+        (sellResult.data as StockSellDashboardRow[]) ?? [],
+        snapshotEndDate,
       );
-      setDashboardMessage(
-        activePeriod.start
-          ? 'Resumen cargado con datos reales del usuario autenticado para el periodo seleccionado.'
-          : 'Resumen cargado con todos los datos visibles del usuario autenticado.',
-      );
-      setIsMetricsLoading(false);
+
+      setDashboardData({
+        incomeBySource,
+        expensesByCategory,
+        ...holdingsCharts,
+      });
+      setIsLoading(false);
     }
 
-    void loadConnectionStatus();
+    void loadDashboardData();
 
     return () => {
       cancelled = true;
     };
-  }, [activePeriod.end, activePeriod.start]);
+  }, [activePeriod.end, activePeriod.start, snapshotEndDate]);
+
+  const dashboardContent =
+    activeTab === 'income' ? (
+      <div className="dashboard-tab-grid">
+        <DashboardChartCard
+          title="Ingresos por fuente"
+          description="Suma de ingresos MXN agrupados por fuente dentro del periodo activo."
+          data={dashboardData.incomeBySource}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay ingresos visibles en el periodo actual."
+        />
+      </div>
+    ) : activeTab === 'expense' ? (
+      <div className="dashboard-tab-grid">
+        <DashboardChartCard
+          title="Egresos por categoria"
+          description="Suma de egresos MXN agrupados por categoria dentro del periodo activo."
+          data={dashboardData.expensesByCategory}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay egresos visibles en el periodo actual."
+        />
+      </div>
+    ) : activeTab === 'investment' ? (
+      <div className="dashboard-tab-grid">
+        <DashboardChartCard
+          title="Inversión por instrumento"
+          description="Costo FIFO remanente de la cartera abierta agrupado por tipo de instrumento."
+          data={dashboardData.investmentByInstrument}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay cartera abierta al corte del periodo para mostrar por instrumento."
+        />
+      </div>
+    ) : (
+      <div className="dashboard-tab-grid dashboard-tab-grid--security">
+        <DashboardChartCard
+          title="Inversión por security"
+          data={dashboardData.investmentsBySecurity}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay cartera abierta al corte del periodo para mostrar por security."
+          compactMeta
+        />
+        <DashboardChartCard
+          title="Inversión por sector"
+          data={dashboardData.investmentsBySector}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay cartera abierta al corte del periodo para mostrar por sector."
+          compactMeta
+        />
+        <DashboardChartCard
+          title="Inversión por industria"
+          data={dashboardData.investmentsByIndustry}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay cartera abierta al corte del periodo para mostrar por industria."
+          compactMeta
+        />
+      </div>
+    );
 
   return (
-    <div className="page">
+    <div className="page dashboard-page">
       <section className="card dashboard-filters">
-        <div className="dashboard-panel__header">
-          <div>
-            <h3 className="card__title">Periodo del dashboard</h3>
-            <p className="card__text">Cambia el periodo para recalcular indicadores y actividad.</p>
-          </div>
-          <div className="dashboard-filters__actions">
+        <div className="dashboard-toolbar">
+          <div className="income-period-filter" aria-label="Filtro de periodo del dashboard">
             <button
               type="button"
               className={`income-period-filter__button ${periodMode === 'all' ? 'income-period-filter__button--active' : ''}`}
@@ -279,105 +588,53 @@ export function DashboardPage() {
               Este año
             </button>
           </div>
+
+          <button
+            type="button"
+            className="dashboard-chart-switch"
+            aria-label={`Cambiar a vista ${nextChartVariant === 'pie' ? 'pie' : 'bar'}`}
+            title={`Cambiar a ${nextChartVariant === 'pie' ? 'pie' : 'bar'}`}
+            onClick={() =>
+              setChartVariants((current) => ({
+                ...current,
+                [activeTab]: nextChartVariant,
+              }))
+            }
+          >
+            <span
+              className={`dashboard-chart-switch__option ${activeChartVariant === 'pie' ? 'dashboard-chart-switch__option--active' : ''}`}
+              aria-hidden="true"
+            >
+              <FontAwesomeIcon icon={faChartPie} />
+            </span>
+            <span
+              className={`dashboard-chart-switch__option ${activeChartVariant === 'bar' ? 'dashboard-chart-switch__option--active' : ''}`}
+              aria-hidden="true"
+            >
+              <FontAwesomeIcon icon={faChartColumn} />
+            </span>
+            {isLoading ? <span className="dashboard-chart-switch__spinner" aria-hidden="true" /> : null}
+          </button>
+
+          <div className="dashboard-tabs" role="tablist" aria-label="Seleccionar dashboard activo">
+            {DASHBOARD_TABS.map((tab) => (
+              <button
+                key={tab.key}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.key}
+                className={`dashboard-tabs__button ${activeTab === tab.key ? 'dashboard-tabs__button--active' : ''}`}
+                onClick={() => setActiveTab(tab.key)}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
         </div>
 
-        <p className="inline-hint">
-          {activePeriod.start
-            ? `Periodo activo: ${dateFormatter.format(new Date(`${activePeriod.start}T00:00:00`))} al ${dateFormatter.format(new Date(`${activePeriod.end}T00:00:00`))}.`
-            : 'Periodo activo: todos los registros visibles bajo la sesión actual.'}
-        </p>
       </section>
 
-      <section className="kpi-grid">
-        <article className="kpi">
-          <span className="kpi__label">Flujo del periodo</span>
-          <span className="kpi__value">{currencyFormatter.format(netFlow)}</span>
-        </article>
-        <article className="kpi">
-          <span className="kpi__label">Ingresos del periodo</span>
-          <span className="kpi__value">{currencyFormatter.format(monthlyIncome)}</span>
-        </article>
-        <article className="kpi">
-          <span className="kpi__label">Egresos del periodo</span>
-          <span className="kpi__value">{currencyFormatter.format(monthlyExpense)}</span>
-        </article>
-        <article className="kpi">
-          <span className="kpi__label">Fuentes activas</span>
-          <span className="kpi__value">{activeSources}</span>
-        </article>
-        <article className="kpi">
-          <span className="kpi__label">Categorias activas</span>
-          <span className="kpi__value">{activeCategories}</span>
-        </article>
-      </section>
-
-      <section className="dashboard-grid">
-        <article className="card dashboard-panel">
-          <div className="dashboard-panel__header">
-            <div>
-              <h3 className="card__title">Actividad reciente</h3>
-              <p className="card__text">Ultimos movimientos visibles bajo la sesion actual.</p>
-            </div>
-            <span className={`status-pill status-pill--${isMetricsLoading ? 'checking' : 'ok'}`}>
-              {isMetricsLoading ? 'Cargando' : 'Actualizado'}
-            </span>
-          </div>
-
-          {recentActivity.length > 0 ? (
-            <div className="activity-list">
-              {recentActivity.map((item) => (
-                <div key={item.id} className="activity-row">
-                  <div>
-                    <div className="activity-row__title">{item.title}</div>
-                    <div className="activity-row__meta">
-                      {item.subtitle} · {dateFormatter.format(new Date(`${item.date}T00:00:00`))}
-                    </div>
-                  </div>
-                  <div className={`activity-row__amount activity-row__amount--${item.kind}`}>
-                    {item.kind === 'income' ? '+' : '-'}
-                    {currencyFormatter.format(item.amountMxn)}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="card__text">Aun no hay movimientos recientes para mostrar.</p>
-          )}
-
-          <p className="inline-hint">{dashboardMessage}</p>
-        </article>
-
-        <article className="card dashboard-panel">
-          <h3 className="card__title">Estado inicial</h3>
-          <div className="status-stack">
-            <p className="card__text">
-              {isSupabaseConfigured()
-                ? 'Supabase está configurado para el entorno actual.'
-                : 'Faltan variables de entorno de Supabase. Usa .env.local para conectar el proyecto.'}
-            </p>
-            <div className="status-list">
-              <div className="status-row">
-                <span className="status-row__label">Project URL</span>
-                <span className="status-row__value">{url || 'No definida'}</span>
-              </div>
-              <div className="status-row">
-                <span className="status-row__label">Anon key</span>
-                <span className="status-row__value">{anonKeyLoaded ? 'Cargada' : 'Faltante'}</span>
-              </div>
-              <div className="status-row">
-                <span className="status-row__label">Conexion</span>
-                <span className={`status-pill status-pill--${connectionStatus}`}>
-                  {connectionStatus === 'checking' && 'Verificando'}
-                  {connectionStatus === 'ok' && 'Operativa'}
-                  {connectionStatus === 'error' && 'Con error'}
-                  {connectionStatus === 'idle' && 'Pendiente'}
-                </span>
-              </div>
-            </div>
-            <p className="inline-hint">{connectionMessage}</p>
-          </div>
-        </article>
-      </section>
+      {dashboardContent}
     </div>
   );
 }
