@@ -955,6 +955,12 @@ textarea {
   transform: translateY(-1px);
 }
 
+.grid-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+  transform: none;
+}
+
 .grid-action--save {
   background: #eefbf3;
   border-color: #cfe8d8;
@@ -1027,6 +1033,27 @@ textarea {
 
 .grid-actions--3 {
   grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.grid-header-action-cell {
+  padding: 0;
+}
+
+.grid-header-action {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.grid-header-action > .grid-action {
+  width: 100%;
+  height: 100%;
+}
+
+.grid-header-action__icon {
+  font-size: 0.95rem;
 }
 
 .catalog-layout {

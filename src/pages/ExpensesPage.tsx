@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCopy, faEraser, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { AppDatePicker } from '../features/shared/AppDatePicker';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import {
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
@@ -83,6 +84,12 @@ type ExpenseGridRow = {
 
 type ExpenseDateFilterMode = 'all' | 'month' | 'year';
 
+type ExpenseTableFilters = {
+  entryDate: string;
+  concept: string;
+  categoryId: string;
+};
+
 function pickRelation(relation: { name: string } | { name: string }[] | null) {
   return Array.isArray(relation) ? relation[0] ?? null : relation;
 }
@@ -144,6 +151,7 @@ const FX_COLUMN_WIDTH = 64;
 const TOTAL_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 120;
 const GRID_ROW_HEIGHT = 30;
+const FILTER_HEADER_ROW_HEIGHT = 64;
 
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
@@ -457,6 +465,11 @@ export function ExpensesPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<ExpenseDateFilterMode>('month');
+  const [tableFilters, setTableFilters] = useState<ExpenseTableFilters>({
+    entryDate: '',
+    concept: '',
+    categoryId: '',
+  });
   const [calculatorExpression, setCalculatorExpression] = useState('');
   const [calculatorCopyState, setCalculatorCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
   const rowsRef = useRef<ExpenseGridRow[]>([]);
@@ -848,6 +861,10 @@ export function ExpensesPage() {
     ],
     [],
   );
+  const categoryFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todas' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
+    [categories],
+  );
 
   const categoryLabelById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const paymentInstrumentLabelById = useMemo(
@@ -856,19 +873,169 @@ export function ExpensesPage() {
   );
   const storeLabelById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const unitLabelById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
+  const visibleRows = useMemo(() => {
+    const draftRow = rows.find((row) => row.isDraft) ?? null;
+    const entryDateFilter = tableFilters.entryDate.trim();
+    const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
+    const categoryIdFilter = tableFilters.categoryId.trim();
+    const filteredRows = rows.filter((row) => {
+      if (row.isDraft) {
+        return false;
+      }
+
+      if (entryDateFilter && row.entryDate !== entryDateFilter) {
+        return false;
+      }
+
+      if (conceptFilter && !row.concept.toLocaleLowerCase().includes(conceptFilter)) {
+        return false;
+      }
+
+      if (categoryIdFilter && row.categoryId !== categoryIdFilter) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return draftRow ? [draftRow, ...filteredRows] : filteredRows;
+  }, [rows, tableFilters]);
   const visibleExpenseSummary = useMemo(() => {
-    const visibleRows = rows.filter((row) => !row.isDraft);
-    const totalAmount = visibleRows.reduce((sum, row) => {
+    const persistedVisibleRows = visibleRows.filter((row) => !row.isDraft);
+    const totalAmount = persistedVisibleRows.reduce((sum, row) => {
       const rowTotal = Number(row.totalAmountMxn);
 
       return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
     }, 0);
 
     return {
-      count: visibleRows.length,
+      count: persistedVisibleRows.length,
       totalLabel: formatCurrencyTotal(totalAmount),
     };
-  }, [rows]);
+  }, [visibleRows]);
+  const hasActiveTableFilters = Boolean(tableFilters.entryDate || tableFilters.concept || tableFilters.categoryId);
+
+  function resetTableFilters() {
+    setTableFilters({
+      entryDate: '',
+      concept: '',
+      categoryId: '',
+    });
+  }
+
+  function renderActionsHeaderCell() {
+    return (
+      <div className="grid-header-action" onClick={(event) => event.stopPropagation()}>
+        <button
+          type="button"
+          className={`grid-action ${hasActiveTableFilters ? 'grid-action--delete' : 'grid-action--clear'}`}
+          aria-label="Resetear filtros"
+          title="Resetear filtros"
+          disabled={!hasActiveTableFilters}
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            resetTableFilters();
+          }}
+        >
+          <FontAwesomeIcon icon={faFilterCircleXmark} className="grid-header-action__icon" />
+        </button>
+      </div>
+    );
+  }
+
+  function renderTextFilterHeaderCell(
+    props: RenderHeaderCellProps<ExpenseGridRow>,
+    config: {
+      label: string;
+      value: string;
+      ariaLabel: string;
+      placeholder?: string;
+      onChange: (value: string) => void;
+    },
+  ) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">{config.label}</div>
+        <input
+          type="text"
+          className="grid-header-filter__input"
+          value={config.value}
+          placeholder={config.placeholder ?? 'Filtrar'}
+          tabIndex={props.tabIndex}
+          aria-label={config.ariaLabel}
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+            }
+          }}
+          onChange={(event) => {
+            config.onChange(event.target.value);
+          }}
+        />
+      </div>
+    );
+  }
+
+  function renderDateHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Fecha</div>
+        <AppDatePicker
+          className="grid-header-filter__input"
+          value={tableFilters.entryDate}
+          ariaLabel="Filtrar egresos por fecha"
+          placeholder="AAAA-MM-DD"
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+            }
+          }}
+          onChange={(value) => {
+            setTableFilters((currentFilters) => ({
+              ...currentFilters,
+              entryDate: value,
+            }));
+          }}
+        />
+      </div>
+    );
+  }
+
+  function renderConceptHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
+    return renderTextFilterHeaderCell(props, {
+      label: 'Concepto',
+      value: tableFilters.concept,
+      ariaLabel: 'Filtrar egresos por concepto',
+      onChange: (value) => {
+        setTableFilters((currentFilters) => ({
+          ...currentFilters,
+          concept: value,
+        }));
+      },
+    });
+  }
+
+  function renderCategoryHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Categoria</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar egresos por categoria"
+          options={categoryFilterOptions}
+          value={tableFilters.categoryId}
+          placeholder="Todas"
+          onChange={(value) => {
+            setTableFilters((currentFilters) => ({
+              ...currentFilters,
+              categoryId: value,
+            }));
+          }}
+        />
+      </div>
+    );
+  }
 
   const columns = useMemo<readonly Column<ExpenseGridRow>[]>(
     () => [
@@ -878,6 +1045,8 @@ export function ExpensesPage() {
         width: ACTION_COLUMN_WIDTH,
         frozen: true,
         editable: false,
+        headerCellClass: 'grid-header-action-cell',
+        renderHeaderCell: renderActionsHeaderCell,
         renderCell: ({ row }) => {
           const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
           const actionCount = showPrimaryActions ? 2 : row.ticketId ? 2 : 1;
@@ -954,12 +1123,16 @@ export function ExpensesPage() {
         key: 'entryDate',
         name: 'Fecha',
         width: DATE_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderDateHeaderCell,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
         key: 'concept',
         name: 'Concepto',
         width: CONCEPT_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderConceptHeaderCell,
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Supermercado, renta, gasolina" />,
       },
       {
@@ -985,6 +1158,8 @@ export function ExpensesPage() {
         key: 'categoryId',
         name: 'Categoria',
         width: CATEGORY_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderCategoryHeaderCell,
         renderCell: ({ row }) => categoryLabelById.get(row.categoryId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
@@ -1028,7 +1203,27 @@ export function ExpensesPage() {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Observaciones opcionales" />,
       },
     ],
-    [categoryLabelById, categoryOptions, currencyOptions, handleDeleteRow, handleRevertRow, paymentInstrumentLabelById, paymentInstrumentOptions, persistExpenseRow, storeLabelById, storeOptions, unitLabelById, unitOptions],
+    [
+      categoryLabelById,
+      categoryOptions,
+      currencyOptions,
+      handleDeleteRow,
+      handleRevertRow,
+      hasActiveTableFilters,
+      paymentInstrumentLabelById,
+      paymentInstrumentOptions,
+      persistExpenseRow,
+      renderCategoryHeaderCell,
+      categoryFilterOptions,
+      renderActionsHeaderCell,
+      renderConceptHeaderCell,
+      renderDateHeaderCell,
+      storeLabelById,
+      storeOptions,
+      tableFilters.categoryId,
+      unitLabelById,
+      unitOptions,
+    ],
   );
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
@@ -1072,7 +1267,14 @@ export function ExpensesPage() {
   }
 
   function handleRowsChange(nextRows: ExpenseGridRow[], data: { indexes: number[] }) {
-    commitExpenseRows(nextRows, data.indexes[0] ?? null);
+    const nextVisibleRowsById = new Map(nextRows.map((row) => [row.id, row]));
+    const mergedRows = rowsRef.current.map((row) => nextVisibleRowsById.get(row.id) ?? row);
+    const updatedVisibleRow = data.indexes[0] == null ? null : nextRows[data.indexes[0]];
+    const updatedRowIndex = updatedVisibleRow
+      ? mergedRows.findIndex((row) => row.id === updatedVisibleRow.id)
+      : null;
+
+    commitExpenseRows(mergedRows, updatedRowIndex != null && updatedRowIndex >= 0 ? updatedRowIndex : null);
   }
 
   function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
@@ -1143,9 +1345,9 @@ export function ExpensesPage() {
           <DataGrid
             ref={gridRef}
             columns={columns}
-            rows={rows}
+            rows={visibleRows}
             rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
