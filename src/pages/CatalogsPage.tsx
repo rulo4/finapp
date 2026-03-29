@@ -117,12 +117,12 @@ const catalogConfigs: CatalogConfig[] = [
   {
     key: 'brokers',
     label: 'Brokers',
-    description: 'Intermediarios para operaciones de inversion.',
+    description: 'Intermediarios para operaciones de inversión.',
     kind: 'brokers',
   },
   {
     key: 'investment_entities',
-    label: 'Entidades de inversion',
+    label: 'Entidades de inversión',
     description: 'Vehículos no bursátiles usados en inversiones de ledger.',
     kind: 'basic',
   },
