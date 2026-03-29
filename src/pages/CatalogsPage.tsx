@@ -21,6 +21,7 @@ type CatalogDbRow = {
   name?: string | null;
   description?: string | null;
   is_active: boolean;
+  is_closed?: boolean | null;
   notes?: string | null;
   instrument_type?: PaymentInstrumentType | SecurityInstrumentType | null;
   ticker?: string | null;
@@ -45,6 +46,7 @@ type CatalogGridRow = {
   description: string;
   instrumentType: string;
   isActive: string;
+  isClosed: string;
   ticker: string;
   companyName: string;
   sector: string;
@@ -167,6 +169,7 @@ function createDraftCatalogRow(config: CatalogConfig): CatalogGridRow {
     description: '',
     instrumentType: config.kind === 'payment_instruments' ? 'cash' : config.kind === 'securities' ? 'stock' : '',
     isActive: 'true',
+    isClosed: 'false',
     ticker: '',
     companyName: '',
     sector: '',
@@ -191,6 +194,7 @@ function toCatalogGridRow(row: CatalogDbRow, config: CatalogConfig): CatalogGrid
     description: row.description ?? '',
     instrumentType: row.instrument_type ?? (config.kind === 'payment_instruments' ? 'cash' : config.kind === 'securities' ? 'stock' : ''),
     isActive: row.is_active ? 'true' : 'false',
+    isClosed: row.is_closed ? 'true' : 'false',
     ticker: row.ticker ?? '',
     companyName: row.company_name ?? '',
     sector: row.sector ?? '',
@@ -264,6 +268,10 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
 
   if (row.isActive !== 'true' && row.isActive !== 'false') {
     return 'El estado activo no es valido.';
+  }
+
+  if (config.key === 'investment_entities' && row.isClosed !== 'true' && row.isClosed !== 'false') {
+    return 'El estado de cierre no es valido.';
   }
 
   return null;
@@ -434,6 +442,10 @@ export function CatalogsPage() {
           is_active: normalizedRow.isActive === 'true',
           notes: normalizedRow.notes.trim() || null,
         };
+
+        if (selectedCatalog.key === 'investment_entities') {
+          payload.is_closed = normalizedRow.isClosed === 'true';
+        }
 
         if (selectedCatalog.kind === 'payment_instruments') {
           payload.instrument_type = normalizedRow.instrumentType as PaymentInstrumentType;
@@ -760,6 +772,16 @@ export function CatalogsPage() {
       renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
       renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
     });
+
+    if (selectedCatalog.key === 'investment_entities') {
+      baseColumns.push({
+        key: 'isClosed',
+        name: 'Cer.',
+        width: 76,
+        renderCell: ({ row }) => (row.isClosed === 'true' ? 'Si' : 'No'),
+        renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
+      });
+    }
 
     return baseColumns;
   }, [handleDeleteRow, handleRevertRow, persistCatalogRow, selectedCatalog]);

@@ -452,6 +452,16 @@ textarea {
   color: #166534;
 }
 
+.status-pill--open {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.status-pill--closed {
+  background: #ecfdf3;
+  color: #166534;
+}
+
 .status-pill--error {
   background: #fee2e2;
   color: #991b1b;
@@ -629,6 +639,11 @@ textarea {
 }
 
 .dashboard-tab-grid--security {
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  align-items: start;
+}
+
+.dashboard-tab-grid--investment {
   grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
   align-items: start;
 }

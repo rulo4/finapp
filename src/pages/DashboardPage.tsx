@@ -8,6 +8,7 @@ import {
   Cell,
   Pie,
   PieChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -37,6 +38,17 @@ type ExpenseDashboardRow = {
   entry_date: string;
   total_amount_mxn: number;
   expense_categories: { name: string } | { name: string }[] | null;
+};
+
+type InvestmentEntityDashboardRelation =
+  | { name: string; is_closed: boolean }
+  | { name: string; is_closed: boolean }[]
+  | null;
+
+type InvestmentMovementDashboardRow = {
+  entry_date: string;
+  amount_mxn: number;
+  investment_entities: InvestmentEntityDashboardRelation;
 };
 
 type SecurityDashboardRow = Security & {
@@ -73,7 +85,7 @@ type DashboardChartDatum = {
   key: string;
   label: string;
   value: number;
-  share: number;
+  share: number | null;
   color: string;
   note?: string;
 };
@@ -82,6 +94,7 @@ type DashboardData = {
   incomeBySource: DashboardChartDatum[];
   expensesByCategory: DashboardChartDatum[];
   investmentByInstrument: DashboardChartDatum[];
+  investmentRealized: DashboardChartDatum[];
   investmentsBySecurity: DashboardChartDatum[];
   investmentsBySector: DashboardChartDatum[];
   investmentsByIndustry: DashboardChartDatum[];
@@ -100,21 +113,13 @@ const DASHBOARD_TABS: Array<{ key: DashboardTabKey; label: string }> = [
 ];
 
 const CHART_COLORS = ['#0f766e', '#2563eb', '#ea580c', '#7c3aed', '#db2777', '#4f46e5', '#0891b2', '#65a30d', '#dc2626', '#ca8a04'];
-
-const INSTRUMENT_LABELS: Record<string, string> = {
-  stock: 'Acciones',
-  etf: 'ETF',
-  fibra: 'FIBRA',
-  reit: 'REIT',
-  adr: 'ADR',
-  fund: 'Fondo',
-  other: 'Otro',
-};
+const NEGATIVE_CHART_COLOR = '#b91c1c';
 
 const EMPTY_DASHBOARD_DATA: DashboardData = {
   incomeBySource: [],
   expensesByCategory: [],
   investmentByInstrument: [],
+  investmentRealized: [],
   investmentsBySecurity: [],
   investmentsBySector: [],
   investmentsByIndustry: [],
@@ -128,18 +133,18 @@ function pickRelationName(relation: { name: string } | { name: string }[] | null
   return Array.isArray(relation) ? relation[0]?.name ?? null : relation.name;
 }
 
+function pickInvestmentEntityRelation(relation: InvestmentEntityDashboardRelation) {
+  if (!relation) {
+    return null;
+  }
+
+  return Array.isArray(relation) ? relation[0] ?? null : relation;
+}
+
 function normalizeLabel(value: string | null | undefined, fallbackLabel: string) {
   const normalized = value?.trim();
 
   return normalized ? normalized : fallbackLabel;
-}
-
-function normalizeInstrumentLabel(value: string | null | undefined) {
-  if (!value) {
-    return 'Sin clasificar';
-  }
-
-  return INSTRUMENT_LABELS[value] ?? 'Sin clasificar';
 }
 
 function formatCompactCurrency(value: number) {
@@ -183,13 +188,94 @@ function buildChartData(entries: Array<{ label: string; value: number; note?: st
     key: `${entry.label}-${index}`,
     label: entry.label,
     value: entry.value,
-    share: total > 0 ? entry.value / total : 0,
+    share: total > 0 ? entry.value / total : null,
     color: CHART_COLORS[index % CHART_COLORS.length],
     note: entry.note,
   } satisfies DashboardChartDatum));
 }
 
-function buildHoldingChartData(
+function buildSignedChartData(entries: Array<{ label: string; value: number; note?: string }>) {
+  const groupedEntries = new Map<string, { value: number; note?: string }>();
+
+  for (const entry of entries) {
+    if (!Number.isFinite(entry.value) || entry.value === 0) {
+      continue;
+    }
+
+    const existing = groupedEntries.get(entry.label);
+    groupedEntries.set(entry.label, {
+      value: Number(((existing?.value ?? 0) + entry.value).toFixed(6)),
+      note: existing?.note ?? entry.note,
+    });
+  }
+
+  const chartEntries = [...groupedEntries.entries()]
+    .map(([label, entry], index) => ({
+      key: `${label}-${index}`,
+      label,
+      value: entry.value,
+      share: null,
+      color: entry.value < 0 ? NEGATIVE_CHART_COLOR : CHART_COLORS[index % CHART_COLORS.length],
+      note: entry.note,
+    }))
+    .sort((left, right) => Math.abs(right.value) - Math.abs(left.value));
+
+  const hasNegativeValues = chartEntries.some((entry) => entry.value < 0);
+  if (hasNegativeValues) {
+    return chartEntries;
+  }
+
+  const total = chartEntries.reduce((sum, entry) => sum + entry.value, 0);
+
+  return chartEntries.map((entry) => ({
+    ...entry,
+    share: total > 0 ? entry.value / total : null,
+  }));
+}
+
+function buildInvestmentFlowChartData(movements: InvestmentMovementDashboardRow[]) {
+  return buildSignedChartData(
+    movements.map((row) => {
+      const relation = pickInvestmentEntityRelation(row.investment_entities);
+
+      return {
+        label: normalizeLabel(relation?.name, 'Sin entidad'),
+        value: Number(row.amount_mxn ?? 0),
+        note: relation?.is_closed ? 'Cerrada' : 'Abierta',
+      };
+    }),
+  );
+}
+
+function buildInvestmentRealizedChartData(movements: InvestmentMovementDashboardRow[]) {
+  const groupedEntries = new Map<string, number>();
+
+  for (const row of movements) {
+    const relation = pickInvestmentEntityRelation(row.investment_entities);
+    if (!relation?.is_closed) {
+      continue;
+    }
+
+    const label = normalizeLabel(relation.name, 'Sin entidad');
+    const value = Number(row.amount_mxn ?? 0);
+
+    if (!Number.isFinite(value) || value === 0) {
+      continue;
+    }
+
+    groupedEntries.set(label, Number(((groupedEntries.get(label) ?? 0) + value).toFixed(6)));
+  }
+
+  return buildSignedChartData(
+    [...groupedEntries.entries()].map(([label, netValue]) => ({
+      label,
+      value: Number((-netValue).toFixed(6)),
+      note: 'Cerrada',
+    })),
+  );
+}
+
+function buildSecurityHoldingChartData(
   securities: SecurityDashboardRow[],
   buyRows: StockBuyDashboardRow[],
   sellRows: StockSellDashboardRow[],
@@ -222,12 +308,6 @@ function buildHoldingChartData(
   const holdingSummaries = summarizeOpenHoldings(filteredBuys, filteredSells);
 
   return {
-    investmentByInstrument: buildChartData(
-      holdingSummaries.map((holding) => ({
-        label: normalizeInstrumentLabel(securityById.get(holding.securityId)?.instrument_type),
-        value: holding.remainingFifoCostBasisMxn,
-      })),
-    ),
     investmentsBySecurity: buildChartData(
       holdingSummaries.map((holding) => {
         const security = securityById.get(holding.securityId);
@@ -268,7 +348,7 @@ function DashboardTooltip({ active, payload }: DashboardTooltipPayload) {
       <strong>{item.label}</strong>
       {item.note ? <span>{item.note}</span> : null}
       <span>{formatCurrencyTotal(item.value)}</span>
-      <span>{percentageFormatter.format(item.share)}</span>
+      {item.share != null ? <span>{percentageFormatter.format(item.share)}</span> : null}
     </div>
   );
 }
@@ -291,7 +371,9 @@ function DashboardChartCard({
   compactMeta?: boolean;
 }) {
   const total = data.reduce((sum, item) => sum + item.value, 0);
-  const chartHeight = chartVariant === 'pie' ? 320 : Math.max(280, data.length * 52);
+  const hasNegativeValues = data.some((item) => item.value < 0);
+  const effectiveChartVariant = hasNegativeValues ? 'bar' : chartVariant;
+  const chartHeight = effectiveChartVariant === 'pie' ? 320 : Math.max(280, data.length * 52);
 
   return (
     <article className="card dashboard-chart-panel">
@@ -306,11 +388,13 @@ function DashboardChartCard({
         </div>
       </div>
 
+      {hasNegativeValues ? <p className="card__text">Se usa barra para conservar signo.</p> : null}
+
       {data.length > 0 ? (
-        <div className={`dashboard-chart dashboard-chart--${chartVariant} ${showLegend ? '' : 'dashboard-chart--legendless'}`}>
-          <div className={`dashboard-chart__visual dashboard-chart__visual--${chartVariant}`} style={{ height: `${chartHeight}px` }}>
+        <div className={`dashboard-chart dashboard-chart--${effectiveChartVariant} ${showLegend ? '' : 'dashboard-chart--legendless'}`}>
+          <div className={`dashboard-chart__visual dashboard-chart__visual--${effectiveChartVariant}`} style={{ height: `${chartHeight}px` }}>
             <ResponsiveContainer width="100%" height="100%">
-              {chartVariant === 'pie' ? (
+              {effectiveChartVariant === 'pie' ? (
                 <PieChart>
                   <Pie
                     data={data}
@@ -331,8 +415,10 @@ function DashboardChartCard({
               ) : (
                 <BarChart data={data} layout="vertical" margin={{ top: 8, right: 18, bottom: 8, left: 6 }}>
                   <CartesianGrid stroke="#e5e7eb" strokeDasharray="3 3" horizontal />
+                  <ReferenceLine x={0} stroke="#94a3b8" strokeDasharray="4 4" />
                   <XAxis
                     type="number"
+                    domain={['auto', 'auto']}
                     tickFormatter={formatCompactCurrency}
                     axisLine={false}
                     tickLine={false}
@@ -347,7 +433,7 @@ function DashboardChartCard({
                     tick={{ fontSize: 11, fill: '#64748b' }}
                   />
                   <Tooltip content={<DashboardTooltip />} />
-                  <Bar dataKey="value" radius={[0, 10, 10, 0]}>
+                  <Bar dataKey="value">
                     {data.map((item) => (
                       <Cell key={item.key} fill={item.color} />
                     ))}
@@ -370,7 +456,7 @@ function DashboardChartCard({
                   </div>
                   <div className="dashboard-legend__values">
                     <strong>{formatCurrencyTotal(item.value)}</strong>
-                    <span>{percentageFormatter.format(item.share)}</span>
+                    {item.share != null ? <span>{percentageFormatter.format(item.share)}</span> : null}
                   </div>
                 </li>
               ))}
@@ -429,20 +515,30 @@ export function DashboardPage() {
 
       let incomeQuery = supabase.from('income_entries').select('entry_date, amount_mxn, income_sources(name)');
       let expenseQuery = supabase.from('expense_entries').select('entry_date, total_amount_mxn, expense_categories(name)');
+      let investmentQuery = supabase
+        .from('investment_movements')
+        .select('entry_date, amount_mxn, investment_entities(name, is_closed)');
+      const lifetimeInvestmentQuery = supabase
+        .from('investment_movements')
+        .select('entry_date, amount_mxn, investment_entities(name, is_closed)');
 
       if (activePeriod.start) {
         incomeQuery = incomeQuery.gte('entry_date', activePeriod.start);
         expenseQuery = expenseQuery.gte('entry_date', activePeriod.start);
+        investmentQuery = investmentQuery.gte('entry_date', activePeriod.start);
       }
 
       if (activePeriod.end) {
         incomeQuery = incomeQuery.lte('entry_date', activePeriod.end);
         expenseQuery = expenseQuery.lte('entry_date', activePeriod.end);
+        investmentQuery = investmentQuery.lte('entry_date', activePeriod.end);
       }
 
-      const [incomeResult, expenseResult, securitiesResult, buyResult, sellResult] = await Promise.all([
+      const [incomeResult, expenseResult, investmentResult, lifetimeInvestmentResult, securitiesResult, buyResult, sellResult] = await Promise.all([
         incomeQuery,
         expenseQuery,
+        investmentQuery,
+        lifetimeInvestmentQuery,
         supabase
           .from('securities')
           .select('id, ticker, company_name, sector, industry, exchange_code, instrument_type, is_active')
@@ -461,7 +557,7 @@ export function DashboardPage() {
         return;
       }
 
-      const firstError = [incomeResult.error, expenseResult.error, securitiesResult.error, buyResult.error, sellResult.error].find(Boolean);
+      const firstError = [incomeResult.error, expenseResult.error, investmentResult.error, lifetimeInvestmentResult.error, securitiesResult.error, buyResult.error, sellResult.error].find(Boolean);
 
       if (firstError) {
         setDashboardData(EMPTY_DASHBOARD_DATA);
@@ -481,8 +577,14 @@ export function DashboardPage() {
           value: Number(row.total_amount_mxn ?? 0),
         })),
       );
+      const investmentByInstrument = buildInvestmentFlowChartData(
+        (investmentResult.data as InvestmentMovementDashboardRow[]) ?? [],
+      );
+      const investmentRealized = buildInvestmentRealizedChartData(
+        (lifetimeInvestmentResult.data as InvestmentMovementDashboardRow[]) ?? [],
+      );
 
-      const holdingsCharts = buildHoldingChartData(
+      const holdingsCharts = buildSecurityHoldingChartData(
         (securitiesResult.data as SecurityDashboardRow[]) ?? [],
         (buyResult.data as StockBuyDashboardRow[]) ?? [],
         (sellResult.data as StockSellDashboardRow[]) ?? [],
@@ -492,6 +594,8 @@ export function DashboardPage() {
       setDashboardData({
         incomeBySource,
         expensesByCategory,
+        investmentByInstrument,
+        investmentRealized,
         ...holdingsCharts,
       });
       setIsLoading(false);
@@ -526,13 +630,22 @@ export function DashboardPage() {
         />
       </div>
     ) : activeTab === 'investment' ? (
-      <div className="dashboard-tab-grid">
+      <div className="dashboard-tab-grid dashboard-tab-grid--investment">
         <DashboardChartCard
-          title="Inversión por instrumento"
-          description="Costo FIFO remanente de la cartera abierta agrupado por tipo de instrumento."
+          title="Flujo neto"
+          description="Abono - retiro por entidad."
           data={dashboardData.investmentByInstrument}
           chartVariant={activeChartVariant}
-          emptyMessage="No hay cartera abierta al corte del periodo para mostrar por instrumento."
+          emptyMessage="No hay flujo en el periodo."
+          compactMeta
+        />
+        <DashboardChartCard
+          title="Realizado"
+          description="Solo cerradas, total."
+          data={dashboardData.investmentRealized}
+          chartVariant={activeChartVariant}
+          emptyMessage="No hay realizado."
+          compactMeta
         />
       </div>
     ) : (

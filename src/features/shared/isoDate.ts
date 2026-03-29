@@ -26,6 +26,18 @@ export function getStartOfCurrentYearIsoDate() {
   return formatLocalDateAsIsoString(new Date(today.getFullYear(), 0, 1));
 }
 
+export function getEndOfCurrentMonthIsoDate() {
+  const today = new Date();
+
+  return formatLocalDateAsIsoString(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+}
+
+export function getEndOfCurrentYearIsoDate() {
+  const today = new Date();
+
+  return formatLocalDateAsIsoString(new Date(today.getFullYear(), 11, 31));
+}
+
 export function isIsoDateString(value: string) {
   if (!ISO_DATE_REGEX.test(value)) {
     return false;
