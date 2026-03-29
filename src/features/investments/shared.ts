@@ -1,5 +1,7 @@
 import type { SelectOption } from '../shared/gridEditors';
 import {
+  getEndOfCurrentMonthIsoDate,
+  getEndOfCurrentYearIsoDate,
   formatLocalDateAsIsoString,
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
@@ -26,6 +28,7 @@ export type Security = {
 export type InvestmentEntity = {
   id: string;
   name: string;
+  is_closed: boolean;
 };
 
 export type InvestmentDateFilterMode = 'all' | 'month' | 'year';
@@ -51,14 +54,14 @@ export function getDateRange(mode: InvestmentDateFilterMode) {
   if (mode === 'month') {
     return {
       start: getStartOfCurrentMonth(),
-      end: getTodayDate(),
+      end: getEndOfCurrentMonthIsoDate(),
     };
   }
 
   if (mode === 'year') {
     return {
       start: getStartOfCurrentYear(),
-      end: getTodayDate(),
+      end: getEndOfCurrentYearIsoDate(),
     };
   }
 

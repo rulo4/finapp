@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faEraser, faFloppyDisk, faLock, faLockOpen, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type SortColumn } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString } from '../features/shared/isoDate';
@@ -35,6 +35,11 @@ type InvestmentMovementRow = Omit<InvestmentMovement, 'investment_entities'> & {
   investment_entities: { name: string } | null;
 };
 
+type InvestmentMovementNetRow = {
+  investment_entity_id: string;
+  amount_mxn: number;
+};
+
 type InvestmentGridRow = {
   id: string;
   persistedId: string | null;
@@ -57,18 +62,23 @@ type InvestmentColumnKey = (typeof INVESTMENT_COLUMN_ORDER)[number];
 type InstrumentSummaryRow = {
   entityId: string;
   entityName: string;
+  isClosed: boolean;
+  statusLabel: string;
+  statusSortValue: number;
   depositsLabel: string;
   depositsValue: number;
   withdrawalsLabel: string;
   withdrawalsValue: number;
   netLabel: string;
   netValue: number;
+  realizedLabel: string;
+  realizedValue: number | null;
   portfolioWeightLabel: string;
   portfolioWeightValue: number | null;
 };
 
 const SUMMARY_GRID_ROW_HEIGHT = 34;
-const SUMMARY_COLUMN_ORDER = ['entityName', 'depositsLabel', 'withdrawalsLabel', 'netLabel', 'portfolioWeightLabel'] as const;
+const SUMMARY_COLUMN_ORDER = ['entityName', 'statusLabel', 'depositsLabel', 'withdrawalsLabel', 'netLabel', 'realizedLabel', 'portfolioWeightLabel'] as const;
 
 type SummaryColumnKey = (typeof SUMMARY_COLUMN_ORDER)[number];
 
@@ -77,6 +87,7 @@ type InstrumentSummaryTotalRow = {
   totalDepositsLabel: string;
   totalWithdrawalsLabel: string;
   totalNetLabel: string;
+  totalRealizedLabel: string;
   totalWeightLabel: string;
 };
 
@@ -250,6 +261,7 @@ function validateInvestmentRow(row: InvestmentGridRow) {
 export function InvestmentsPage() {
   const [entities, setEntities] = useState<InvestmentEntity[]>([]);
   const [rows, setRows] = useState<InvestmentGridRow[]>([]);
+  const [lifetimeNetByEntity, setLifetimeNetByEntity] = useState<Map<string, number>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
@@ -289,9 +301,10 @@ export function InvestmentsPage() {
       entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
     }
 
-    const [{ data: entityData, error: entityError }, { data: entryData, error: entryError }] = await Promise.all([
-      supabase.from('investment_entities').select('id, name').eq('is_active', true).order('name', { ascending: true }),
+    const [{ data: entityData, error: entityError }, { data: entryData, error: entryError }, { data: lifetimeEntryData, error: lifetimeEntryError }] = await Promise.all([
+      supabase.from('investment_entities').select('id, name, is_closed').eq('is_active', true).order('name', { ascending: true }),
       entriesQuery,
+      supabase.from('investment_movements').select('investment_entity_id, amount_mxn'),
     ]);
 
     if (entityError) {
@@ -306,13 +319,31 @@ export function InvestmentsPage() {
       return;
     }
 
+    if (lifetimeEntryError) {
+      setFeedback(`No fue posible cargar el realizado histórico: ${lifetimeEntryError.message}`);
+      setIsLoading(false);
+      return;
+    }
+
     const nextEntities = (entityData as InvestmentEntity[]) ?? [];
     const nextRows = ((entryData as InvestmentMovement[]) ?? []).map(normalizeInvestmentMovement).map(toInvestmentGridRow);
+    const nextLifetimeNetByEntity = ((lifetimeEntryData as InvestmentMovementNetRow[]) ?? []).reduce((map, row) => {
+      const currentValue = map.get(row.investment_entity_id) ?? 0;
+      const amountMxn = Number(row.amount_mxn ?? 0);
+
+      if (!Number.isFinite(amountMxn)) {
+        return map;
+      }
+
+      map.set(row.investment_entity_id, Number((currentValue + amountMxn).toFixed(6)));
+      return map;
+    }, new Map<string, number>());
     const loadedRows = withDraftRow(nextRows);
 
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
     rowsRef.current = loadedRows;
     setEntities(nextEntities);
+    setLifetimeNetByEntity(nextLifetimeNetByEntity);
     setRows(loadedRows);
     setFeedback(nextEntities.length > 0 ? null : 'Primero crea al menos una entidad de inversión en Catálogos.');
     setIsLoading(false);
@@ -518,6 +549,7 @@ export function InvestmentsPage() {
     () => [{ value: '', label: 'Entidad' }, ...entities.map((entity) => ({ value: entity.id, label: entity.name }))],
     [entities],
   );
+  const entityById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity])), [entities]);
   const entityLabelById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity.name])), [entities]);
 
   const visibleSummary = useMemo(() => {
@@ -574,18 +606,30 @@ export function InvestmentsPage() {
       summaryByEntity.set(row.entityId, summary);
     }
 
-    const summaryRows = [...summaryByEntity.entries()].map(([entityId, summary]) => ({
-      entityId,
-      entityName: summary.entityName,
-      depositsLabel: formatCurrencyTotal(summary.deposits),
-      depositsValue: summary.deposits,
-      withdrawalsLabel: formatCurrencyTotal(summary.withdrawals),
-      withdrawalsValue: summary.withdrawals,
-      netLabel: formatCurrencyTotal(summary.net),
-      netValue: summary.net,
-      portfolioWeightLabel: '—',
-      portfolioWeightValue: null,
-    }));
+    const summaryRows = [...summaryByEntity.entries()].map(([entityId, summary]) => {
+      const entity = entityById.get(entityId);
+      const isClosed = entity?.is_closed ?? false;
+      const realizedNet = lifetimeNetByEntity.get(entityId);
+      const realizedValue = isClosed && realizedNet != null ? Number((-realizedNet).toFixed(6)) : null;
+
+      return {
+        entityId,
+        entityName: summary.entityName,
+        isClosed,
+        statusLabel: isClosed ? 'Cerrada' : 'Abierta',
+        statusSortValue: isClosed ? 1 : 0,
+        depositsLabel: formatCurrencyTotal(summary.deposits),
+        depositsValue: summary.deposits,
+        withdrawalsLabel: formatCurrencyTotal(summary.withdrawals),
+        withdrawalsValue: summary.withdrawals,
+        netLabel: formatCurrencyTotal(summary.net),
+        netValue: summary.net,
+        realizedLabel: realizedValue == null ? '—' : formatCurrencyTotal(realizedValue),
+        realizedValue,
+        portfolioWeightLabel: '—',
+        portfolioWeightValue: null,
+      };
+    });
 
     const totalNet = summaryRows.reduce((sum, row) => sum + row.netValue, 0);
 
@@ -596,17 +640,27 @@ export function InvestmentsPage() {
         portfolioWeightLabel: formatPercent(totalNet > 0 ? row.netValue / totalNet : null),
       }))
       .sort((left, right) => left.entityName.localeCompare(right.entityName, 'es'));
-  }, [entityLabelById, rows]);
+  }, [entityById, entityLabelById, lifetimeNetByEntity, rows]);
+
+  const entityStatusSummary = useMemo(() => {
+    const openCount = instrumentSummaryRows.filter((row) => !row.isClosed).length;
+    const closedCount = instrumentSummaryRows.filter((row) => row.isClosed).length;
+
+    return { openCount, closedCount };
+  }, [instrumentSummaryRows]);
 
   const summaryTotalRow = useMemo<InstrumentSummaryTotalRow>(() => {
     const totalDeposits = instrumentSummaryRows.reduce((sum, row) => sum + row.depositsValue, 0);
     const totalWithdrawals = instrumentSummaryRows.reduce((sum, row) => sum + row.withdrawalsValue, 0);
     const totalNet = instrumentSummaryRows.reduce((sum, row) => sum + row.netValue, 0);
+    const realizedRows = instrumentSummaryRows.filter((row) => row.realizedValue != null);
+    const totalRealized = realizedRows.reduce((sum, row) => sum + (row.realizedValue ?? 0), 0);
     return {
       id: 'total',
       totalDepositsLabel: formatCurrencyTotal(totalDeposits),
       totalWithdrawalsLabel: formatCurrencyTotal(totalWithdrawals),
       totalNetLabel: formatCurrencyTotal(totalNet),
+      totalRealizedLabel: realizedRows.length > 0 ? formatCurrencyTotal(totalRealized) : '—',
       totalWeightLabel: totalNet > 0 ? formatPercent(1) : '—',
     };
   }, [instrumentSummaryRows]);
@@ -623,12 +677,21 @@ export function InvestmentsPage() {
 
         if (sort.columnKey === 'entityName') {
           result = left.entityName.localeCompare(right.entityName, 'es-MX');
+        } else if (sort.columnKey === 'statusLabel') {
+          result = left.statusSortValue - right.statusSortValue;
         } else if (sort.columnKey === 'depositsLabel') {
           result = left.depositsValue - right.depositsValue;
         } else if (sort.columnKey === 'withdrawalsLabel') {
           result = left.withdrawalsValue - right.withdrawalsValue;
         } else if (sort.columnKey === 'netLabel') {
           result = left.netValue - right.netValue;
+        } else if (sort.columnKey === 'realizedLabel') {
+          const leftValue = left.realizedValue;
+          const rightValue = right.realizedValue;
+          if (leftValue == null && rightValue == null) result = 0;
+          else if (leftValue == null) result = 1;
+          else if (rightValue == null) result = -1;
+          else result = leftValue - rightValue;
         } else if (sort.columnKey === 'portfolioWeightLabel') {
           const leftValue = left.portfolioWeightValue;
           const rightValue = right.portfolioWeightValue;
@@ -650,11 +713,28 @@ export function InvestmentsPage() {
   const summaryColumnsByKey = useMemo<Record<SummaryColumnKey, Column<InstrumentSummaryRow, InstrumentSummaryTotalRow>>>(() => ({
     entityName: {
       key: 'entityName',
-      name: 'Instrumento',
+      name: 'Entidad',
       width: 220,
       draggable: true,
       sortable: true,
       renderSummaryCell: () => <strong>Total</strong>,
+    },
+    statusLabel: {
+      key: 'statusLabel',
+      name: 'Est.',
+      width: 84,
+      draggable: true,
+      sortable: true,
+      renderCell: ({ row }) => (
+        <span
+          className={`status-pill ${row.isClosed ? 'status-pill--closed' : 'status-pill--open'}`}
+          title={row.statusLabel}
+          aria-label={row.statusLabel}
+        >
+          <FontAwesomeIcon icon={row.isClosed ? faLock : faLockOpen} />
+        </span>
+      ),
+      renderSummaryCell: () => null,
     },
     depositsLabel: {
       key: 'depositsLabel',
@@ -679,6 +759,23 @@ export function InvestmentsPage() {
       draggable: true,
       sortable: true,
       renderSummaryCell: ({ row }) => <strong>{row.totalNetLabel}</strong>,
+    },
+    realizedLabel: {
+      key: 'realizedLabel',
+      name: 'Real.',
+      width: 138,
+      draggable: true,
+      sortable: true,
+      renderCell: ({ row }) => {
+        if (row.realizedValue == null) {
+          return '—';
+        }
+
+        const toneClass = row.realizedValue > 0 ? 'trade-cell-value--positive' : row.realizedValue < 0 ? 'trade-cell-value--negative' : 'trade-cell-value';
+
+        return <span className={`badge badge--pnl ${toneClass}`}>{row.realizedLabel}</span>;
+      },
+      renderSummaryCell: ({ row }) => <strong>{row.totalRealizedLabel}</strong>,
     },
     portfolioWeightLabel: {
       key: 'portfolioWeightLabel',
@@ -928,8 +1025,14 @@ export function InvestmentsPage() {
         {instrumentSummaryRows.length > 0 ? (
           <div className="finance-panel__summary">
             <div className="finance-panel__header">
-              <div className="badge-row" aria-label="Resumen por instrumento">
-                <span className="badge">{instrumentSummaryRows.length} instrumentos</span>
+              <div className="badge-row" aria-label="Resumen por entidad">
+                <span className="badge">{instrumentSummaryRows.length} entidades</span>
+                <span className="status-pill status-pill--open" title="Abiertas" aria-label="Abiertas">
+                  <FontAwesomeIcon icon={faLockOpen} /> {entityStatusSummary.openCount}
+                </span>
+                <span className="status-pill status-pill--closed" title="Cerradas" aria-label="Cerradas">
+                  <FontAwesomeIcon icon={faLock} /> {entityStatusSummary.closedCount}
+                </span>
               </div>
             </div>
 
