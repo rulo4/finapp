@@ -7,6 +7,7 @@ import { AppShell } from './layouts/AppShell';
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const IncomePage = lazy(() => import('./pages/IncomePage').then((module) => ({ default: module.IncomePage })));
 const ExpensesPage = lazy(() => import('./pages/ExpensesPage').then((module) => ({ default: module.ExpensesPage })));
+const CreditCardsPage = lazy(() => import('./pages/CreditCardsPage').then((module) => ({ default: module.CreditCardsPage })));
 const InvestmentsPage = lazy(() => import('./pages/InvestmentsPage').then((module) => ({ default: module.InvestmentsPage })));
 const StockBuysPage = lazy(() => import('./pages/StockBuysPage').then((module) => ({ default: module.StockBuysPage })));
 const StockSellsPage = lazy(() => import('./pages/StockSellsPage').then((module) => ({ default: module.StockSellsPage })));
@@ -66,6 +67,14 @@ export default function App() {
           element={
             <Suspense fallback={<RouteFallback />}>
               <ExpensesPage />
+            </Suspense>
+          }
+        />
+        <Route
+          path="/credit-cards"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <CreditCardsPage />
             </Suspense>
           }
         />

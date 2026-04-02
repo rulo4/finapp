@@ -14,3 +14,5 @@ imports/
 scripts/
 expenses_to_import.tsv
 .vscode/**
+.bin/
+.tmp-supabase-cli/

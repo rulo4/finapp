@@ -10,6 +10,24 @@ export function formatLocalDateAsIsoString(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+export function normalizeIsoDateInput(value: string | null | undefined) {
+  const digits = String(value ?? '').replace(/\D/g, '').slice(0, 8);
+
+  if (!digits) {
+    return '';
+  }
+
+  if (digits.length <= 4) {
+    return digits;
+  }
+
+  if (digits.length <= 6) {
+    return `${digits.slice(0, 4)}-${digits.slice(4)}`;
+  }
+
+  return `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6)}`;
+}
+
 export function getTodayIsoDate() {
   return formatLocalDateAsIsoString(new Date());
 }

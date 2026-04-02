@@ -171,6 +171,12 @@ export function InputCellEditor<TRow extends EditorRow>({
   const key = column.key as keyof TRow;
   const isIsoDateInput = inputType === 'iso-date';
 
+  function closeEditorDeferred(shouldCommit: boolean) {
+    queueMicrotask(() => {
+      onClose(shouldCommit, true);
+    });
+  }
+
   useEffect(() => {
     inputRef.current?.focus();
     inputRef.current?.select();
@@ -186,14 +192,14 @@ export function InputCellEditor<TRow extends EditorRow>({
         onChange={(nextValue) => {
           onRowChange({ ...row, [key]: nextValue } as TRow);
         }}
-        onCalendarClose={() => onClose(true, true)}
+        onCalendarClose={() => closeEditorDeferred(true)}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
-            onClose(true, true);
+            closeEditorDeferred(true);
           }
 
           if (event.key === 'Escape') {
-            onClose(false, true);
+            closeEditorDeferred(false);
           }
         }}
         placeholder={placeholder ?? ISO_DATE_PLACEHOLDER}

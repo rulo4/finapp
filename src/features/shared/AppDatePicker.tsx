@@ -2,7 +2,7 @@ import { forwardRef, type InputHTMLAttributes, useMemo } from 'react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import DatePicker, { type ReactDatePickerCustomHeaderProps } from 'react-datepicker';
-import { ISO_DATE_PLACEHOLDER, isIsoDateString } from './isoDate';
+import { ISO_DATE_PLACEHOLDER, isIsoDateString, normalizeIsoDateInput } from './isoDate';
 
 type AppDatePickerProps = {
   value: string;
@@ -139,7 +139,19 @@ export function AppDatePicker({
           return;
         }
 
-        onChange((event.target as HTMLInputElement).value);
+        const input = event.target instanceof HTMLInputElement ? event.target : null;
+
+        if (!input) {
+          return;
+        }
+
+        const normalizedValue = normalizeIsoDateInput(input.value);
+
+        if (input.value !== normalizedValue) {
+          input.value = normalizedValue;
+        }
+
+        onChange(normalizedValue);
       }}
       onBlur={onBlur}
       onKeyDown={onKeyDown}
