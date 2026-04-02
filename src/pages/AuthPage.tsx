@@ -7,11 +7,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
   const [variant, setVariant] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [message, setMessage] = useState(
-    variant === 'sign-in'
-      ? 'Inicia sesion para cargar datos propios y activar RLS.'
-      : 'Crea una cuenta local para empezar a capturar datos.',
-  );
+  const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { url, anonKeyLoaded } = getSupabaseConfig();
 
@@ -21,8 +17,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
         <section className="auth-card">
           <div className="auth-card__header">
             <span className="auth-card__eyebrow">Finapp</span>
-            <h1 className="sidebar__title">Cargando sesion</h1>
-            <p className="card__text">Comprobando la sesion activa en Supabase...</p>
+            <h1 className="sidebar__title">Cargando</h1>
           </div>
         </section>
       </div>
@@ -35,8 +30,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
         <section className="auth-card">
           <div className="auth-card__header">
             <span className="auth-card__eyebrow">Finapp</span>
-            <h1 className="sidebar__title">Supabase no configurado</h1>
-            <p className="card__text">La app requiere `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` para iniciar sesion.</p>
+            <h1 className="sidebar__title">Config faltante</h1>
           </div>
           <div className="status-list">
             <div className="status-row">
@@ -82,7 +76,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     if (data.session) {
       setMessage('Cuenta creada y sesion iniciada.');
     } else {
-      setMessage('Cuenta creada. Si el entorno exige confirmacion, revisa Mailpit.');
+      setMessage('Cuenta creada. Espera el correo para confirmar tu cuenta y revisa spam si no lo ves.');
     }
 
     setIsSubmitting(false);
@@ -93,12 +87,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
       <section className="auth-card">
         <div className="auth-card__header">
           <span className="auth-card__eyebrow">Finapp</span>
-          <h1 className="sidebar__title">{variant === 'sign-in' ? 'Acceso' : 'Crear cuenta'}</h1>
-          <p className="card__text">
-            {variant === 'sign-in'
-              ? 'Autenticate para trabajar con catalogos, ingresos y egresos propios.'
-              : 'Registra un usuario local de Supabase para empezar a probar la app.'}
-          </p>
+          <h1 className="sidebar__title">{variant === 'sign-in' ? 'Entrar' : 'Crear cuenta'}</h1>
         </div>
 
         <form className="auth-form" onSubmit={handleSubmit}>
@@ -109,19 +98,19 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
               autoComplete="email"
               value={email}
               onChange={(event) => setEmail(event.target.value)}
-              placeholder="tu@correo.com"
+              placeholder="correo@ejemplo.com"
               required
             />
           </label>
 
           <label className="auth-field">
-            <span>Password</span>
+            <span>Clave</span>
             <input
               type="password"
               autoComplete={variant === 'sign-in' ? 'current-password' : 'new-password'}
               value={password}
               onChange={(event) => setPassword(event.target.value)}
-              placeholder="Minimo 6 caracteres"
+              placeholder="Min. 6 caracteres"
               minLength={6}
               required
             />
@@ -129,7 +118,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
 
           <div className="auth-actions">
             <button className="auth-submit" type="submit" disabled={isSubmitting}>
-              {isSubmitting ? 'Procesando...' : variant === 'sign-in' ? 'Iniciar sesion' : 'Crear cuenta'}
+              {isSubmitting ? 'Procesando...' : variant === 'sign-in' ? 'Entrar' : 'Crear'}
             </button>
             <button
               className="auth-switch"
@@ -137,19 +126,15 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
               onClick={() => {
                 const nextVariant = variant === 'sign-in' ? 'sign-up' : 'sign-in';
                 setVariant(nextVariant);
-                setMessage(
-                  nextVariant === 'sign-in'
-                    ? 'Inicia sesion para cargar datos propios y activar RLS.'
-                    : 'Crea una cuenta local para empezar a capturar datos.',
-                );
+                setMessage('');
               }}
             >
-              {variant === 'sign-in' ? 'Necesito una cuenta' : 'Ya tengo cuenta'}
+              {variant === 'sign-in' ? 'Crear cuenta' : 'Ya tengo cuenta'}
             </button>
           </div>
         </form>
 
-        <p className="inline-hint">{message}</p>
+        {message ? <p className="inline-hint">{message}</p> : null}
       </section>
     </div>
   );
