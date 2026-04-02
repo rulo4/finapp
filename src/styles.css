@@ -1635,6 +1635,216 @@ textarea {
   color: #b91c1c;
 }
 
+.credit-cards-page {
+  gap: 12px;
+}
+
+.credit-cards-toolbar {
+  padding: 12px 14px;
+}
+
+.credit-cards-toolbar__main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.credit-cards-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+}
+
+.credit-cards-metric {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
+  background: #ffffff;
+}
+
+.credit-cards-metric--ok {
+  background: linear-gradient(180deg, #f7fff9 0%, #ffffff 100%);
+  border-color: #d8f0df;
+}
+
+.credit-cards-metric--warn {
+  background: linear-gradient(180deg, #fff8f3 0%, #ffffff 100%);
+  border-color: #f6ddcb;
+}
+
+.credit-cards-metric__icon,
+.credit-cards-empty-card__icon {
+  display: inline-grid;
+  place-items: center;
+  inline-size: 34px;
+  block-size: 34px;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  flex: 0 0 auto;
+}
+
+.credit-cards-metric__body {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.credit-cards-metric__label {
+  color: #64748b;
+  font-size: 0.78rem;
+}
+
+.credit-cards-metric__value {
+  color: #0f172a;
+  font-size: 0.94rem;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-cards-empty-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 56px;
+}
+
+.credit-cards-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(360px, 0.95fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.credit-cards-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+}
+
+.credit-cards-panel--side {
+  align-content: start;
+}
+
+.credit-cards-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.credit-cards-panel__heading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  color: #0f172a;
+}
+
+.credit-cards-activity {
+  display: grid;
+  gap: 8px;
+}
+
+.credit-cards-activity__list {
+  display: grid;
+  gap: 6px;
+  max-block-size: 280px;
+  overflow: auto;
+}
+
+.credit-cards-activity__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.credit-cards-activity__meta {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.credit-cards-activity__meta strong,
+.credit-cards-activity__value {
+  font-size: 0.82rem;
+}
+
+.credit-cards-activity__meta strong {
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.credit-cards-activity__meta span {
+  color: #64748b;
+  font-size: 0.74rem;
+}
+
+.credit-cards-activity__value {
+  white-space: nowrap;
+}
+
+.credit-cards-activity__value--expense {
+  color: #b91c1c;
+}
+
+.credit-cards-activity__value--income {
+  color: #166534;
+}
+
+.credit-cards-activity__value--neutral {
+  color: #1d4ed8;
+}
+
+.credit-cards-activity__empty {
+  display: grid;
+  place-items: center;
+  min-height: 84px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.credit-cards-grid-empty-action {
+  display: block;
+  inline-size: 100%;
+  block-size: 100%;
+}
+
+.row-selected-soft .rdg-cell {
+  background: #eef6ff;
+}
+
+@media (max-width: 1280px) {
+  .credit-cards-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .credit-cards-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .credit-cards-metric__value {
+    white-space: normal;
+  }
+}
+
 .tickets-hero {
   display: flex;
   justify-content: space-between;

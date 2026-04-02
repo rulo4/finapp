@@ -88,6 +88,7 @@ type ExpenseTableFilters = {
   entryDate: string;
   concept: string;
   categoryId: string;
+  paymentInstrumentId: string;
 };
 
 function pickRelation(relation: { name: string } | { name: string }[] | null) {
@@ -152,6 +153,9 @@ const TOTAL_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 120;
 const GRID_ROW_HEIGHT = 30;
 const FILTER_HEADER_ROW_HEIGHT = 64;
+const EXPENSE_ENTRIES_PAGE_SIZE = 1000;
+const EXPENSE_ENTRY_SELECT =
+  'id, entry_date, concept, quantity, unit_of_measure_id, unit_of_measure, subtotal_original, total_amount_mxn, currency_code, fx_rate_to_mxn, category_id, payment_instrument_id, store_id, ticket_url, notes, expense_categories(name), payment_instruments(name), stores(name)';
 
 function formatEditableNumber(value: number | null | undefined) {
   if (value == null) {
@@ -224,6 +228,65 @@ function toExpenseGridRow(entry: ExpenseEntry, ticketId: string | null): Expense
     fxRateToMxn: formatEditableNumber(entry.currency_code === 'MXN' ? 1 : (entry.fx_rate_to_mxn ?? 1)),
     totalAmountMxn: formatEditableNumber(entry.total_amount_mxn),
     notes: entry.notes ?? '',
+  };
+}
+
+async function fetchAllExpenseEntries(activeDateRange: { start: string; end: string }) {
+  if (!supabase) {
+    return {
+      data: null as ExpenseEntryRow[] | null,
+      error: new Error('Supabase no esta disponible.'),
+    };
+  }
+
+  const allRows: ExpenseEntryRow[] = [];
+  let lastEntryDate: string | null = null;
+  let lastId: string | null = null;
+
+  while (true) {
+    let query = supabase
+      .from('expense_entries')
+      .select(EXPENSE_ENTRY_SELECT)
+      .order('entry_date', { ascending: false })
+      .order('id', { ascending: false })
+      .limit(EXPENSE_ENTRIES_PAGE_SIZE);
+
+    if (activeDateRange.start) {
+      query = query.gte('entry_date', activeDateRange.start);
+    }
+
+    if (activeDateRange.end) {
+      query = query.lte('entry_date', activeDateRange.end);
+    }
+
+    if (lastEntryDate && lastId) {
+      query = query.or(`entry_date.lt.${lastEntryDate},and(entry_date.eq.${lastEntryDate},id.lt.${lastId})`);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return {
+        data: null as ExpenseEntryRow[] | null,
+        error,
+      };
+    }
+
+    const batchRows = (data as ExpenseEntryRow[]) ?? [];
+    allRows.push(...batchRows);
+
+    if (batchRows.length < EXPENSE_ENTRIES_PAGE_SIZE) {
+      break;
+    }
+
+    const lastRow = batchRows[batchRows.length - 1];
+    lastEntryDate = lastRow?.entry_date ?? null;
+    lastId = lastRow?.id ?? null;
+  }
+
+  return {
+    data: allRows,
+    error: null,
   };
 }
 
@@ -469,6 +532,7 @@ export function ExpensesPage() {
     entryDate: '',
     concept: '',
     categoryId: '',
+    paymentInstrumentId: '',
   });
   const [calculatorExpression, setCalculatorExpression] = useState('');
   const [calculatorCopyState, setCalculatorCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
@@ -514,28 +578,12 @@ export function ExpensesPage() {
 
     setIsLoading(true);
 
-    let entriesQuery = supabase
-      .from('expense_entries')
-      .select(
-        'id, entry_date, concept, quantity, unit_of_measure_id, unit_of_measure, subtotal_original, total_amount_mxn, currency_code, fx_rate_to_mxn, category_id, payment_instrument_id, store_id, ticket_url, notes, expense_categories(name), payment_instruments(name), stores(name)',
-      )
-      .order('entry_date', { ascending: false })
-      .order('created_at', { ascending: false });
-
-    if (activeDateRange.start) {
-      entriesQuery = entriesQuery.gte('entry_date', activeDateRange.start);
-    }
-
-    if (activeDateRange.end) {
-      entriesQuery = entriesQuery.lte('entry_date', activeDateRange.end);
-    }
-
     const [categoriesResult, instrumentsResult, storesResult, unitsResult, entriesResult] = await Promise.all([
       supabase.from('expense_categories').select('id, name').order('name', { ascending: true }),
       supabase.from('payment_instruments').select('id, name').order('name', { ascending: true }),
       supabase.from('stores').select('id, name').order('name', { ascending: true }),
       supabase.from('unit_of_measures').select('id, name').order('name', { ascending: true }),
-      entriesQuery,
+      fetchAllExpenseEntries(activeDateRange),
     ]);
 
     if (categoriesResult.error) {
@@ -865,6 +913,10 @@ export function ExpensesPage() {
     () => [{ value: '', label: 'Todas' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
     [categories],
   );
+  const paymentInstrumentFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todos' }, ...paymentInstruments.map((instrument) => ({ value: instrument.id, label: instrument.name }))],
+    [paymentInstruments],
+  );
 
   const categoryLabelById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const paymentInstrumentLabelById = useMemo(
@@ -878,6 +930,7 @@ export function ExpensesPage() {
     const entryDateFilter = tableFilters.entryDate.trim();
     const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
     const categoryIdFilter = tableFilters.categoryId.trim();
+    const paymentInstrumentIdFilter = tableFilters.paymentInstrumentId.trim();
     const filteredRows = rows.filter((row) => {
       if (row.isDraft) {
         return false;
@@ -892,6 +945,10 @@ export function ExpensesPage() {
       }
 
       if (categoryIdFilter && row.categoryId !== categoryIdFilter) {
+        return false;
+      }
+
+      if (paymentInstrumentIdFilter && row.paymentInstrumentId !== paymentInstrumentIdFilter) {
         return false;
       }
 
@@ -913,13 +970,14 @@ export function ExpensesPage() {
       totalLabel: formatCurrencyTotal(totalAmount),
     };
   }, [visibleRows]);
-  const hasActiveTableFilters = Boolean(tableFilters.entryDate || tableFilters.concept || tableFilters.categoryId);
+  const hasActiveTableFilters = Boolean(tableFilters.entryDate || tableFilters.concept || tableFilters.categoryId || tableFilters.paymentInstrumentId);
 
   function resetTableFilters() {
     setTableFilters({
       entryDate: '',
       concept: '',
       categoryId: '',
+      paymentInstrumentId: '',
     });
   }
 
@@ -1030,6 +1088,27 @@ export function ExpensesPage() {
             setTableFilters((currentFilters) => ({
               ...currentFilters,
               categoryId: value,
+            }));
+          }}
+        />
+      </div>
+    );
+  }
+
+  function renderPaymentInstrumentHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Pago con</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar egresos por instrumento de pago"
+          options={paymentInstrumentFilterOptions}
+          value={tableFilters.paymentInstrumentId}
+          placeholder="Todos"
+          onChange={(value) => {
+            setTableFilters((currentFilters) => ({
+              ...currentFilters,
+              paymentInstrumentId: value,
             }));
           }}
         />
@@ -1167,6 +1246,8 @@ export function ExpensesPage() {
         key: 'paymentInstrumentId',
         name: 'Pago con',
         width: PAYMENT_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderPaymentInstrumentHeaderCell,
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
       },
@@ -1211,6 +1292,7 @@ export function ExpensesPage() {
       handleRevertRow,
       hasActiveTableFilters,
       paymentInstrumentLabelById,
+      paymentInstrumentFilterOptions,
       paymentInstrumentOptions,
       persistExpenseRow,
       renderCategoryHeaderCell,
@@ -1218,6 +1300,7 @@ export function ExpensesPage() {
       renderActionsHeaderCell,
       renderConceptHeaderCell,
       renderDateHeaderCell,
+      renderPaymentInstrumentHeaderCell,
       storeLabelById,
       storeOptions,
       tableFilters.categoryId,
