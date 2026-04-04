@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faLock, faLockOpen, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle, type SortColumn } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps, type SortColumn } from 'react-data-grid';
+import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isIsoDateString } from '../features/shared/isoDate';
 import {
   commitActiveEditorAndRun,
@@ -92,6 +92,7 @@ type InstrumentSummaryTotalRow = {
 };
 
 const GRID_ROW_HEIGHT = 30;
+const FILTER_HEADER_ROW_HEIGHT = 64;
 const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
@@ -265,6 +266,7 @@ export function InvestmentsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
+  const [entityFilterId, setEntityFilterId] = useState('');
   const [investmentColumnOrder, setInvestmentColumnOrder] = useState<readonly InvestmentColumnKey[]>(INVESTMENT_COLUMN_ORDER);
   const [summaryColumnOrder, setSummaryColumnOrder] = useState<readonly SummaryColumnKey[]>(SUMMARY_COLUMN_ORDER);
   const [summarySortColumns, setSummarySortColumns] = useState<readonly SortColumn[]>([]);
@@ -354,18 +356,21 @@ export function InvestmentsPage() {
   }, [loadData]);
 
   function handleRowsChange(nextRows: InvestmentGridRow[], data: { indexes: number[] }) {
-    const rowIndex = data.indexes[0] ?? null;
+    const nextVisibleRowsById = new Map(nextRows.map((row) => [row.id, row]));
+    const mergedRows = rowsRef.current.map((row) => nextVisibleRowsById.get(row.id) ?? row);
+    const updatedVisibleRow = data.indexes[0] == null ? null : nextRows[data.indexes[0]];
+    const rowIndex = updatedVisibleRow ? mergedRows.findIndex((row) => row.id === updatedVisibleRow.id) : null;
 
     if (rowIndex == null) {
-      rowsRef.current = nextRows;
-      setRows(nextRows);
+      rowsRef.current = mergedRows;
+      setRows(mergedRows);
       return;
     }
 
-    const normalizedRow = normalizeInvestmentGridRow(nextRows[rowIndex]);
+    const normalizedRow = normalizeInvestmentGridRow(mergedRows[rowIndex]);
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftInvestmentRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateInvestmentRow(normalizedRow) : null;
-    const updatedRows: InvestmentGridRow[] = nextRows.map((row, index) => {
+    const updatedRows: InvestmentGridRow[] = mergedRows.map((row, index) => {
       if (index !== rowIndex) {
         return row;
       }
@@ -549,36 +554,57 @@ export function InvestmentsPage() {
     () => [{ value: '', label: 'Entidad' }, ...entities.map((entity) => ({ value: entity.id, label: entity.name }))],
     [entities],
   );
+  const entityFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todas' }, ...entities.map((entity) => ({ value: entity.id, label: entity.name }))],
+    [entities],
+  );
   const entityById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity])), [entities]);
   const entityLabelById = useMemo(() => new Map(entities.map((entity) => [entity.id, entity.name])), [entities]);
 
+  const visibleRows = useMemo(() => {
+    const draftRow = rows.find((row) => row.isDraft) ?? null;
+    const filteredRows = rows.filter((row) => {
+      if (row.isDraft) {
+        return false;
+      }
+
+      if (entityFilterId && row.entityId !== entityFilterId) {
+        return false;
+      }
+
+      return true;
+    });
+
+    return draftRow ? [draftRow, ...filteredRows] : filteredRows;
+  }, [entityFilterId, rows]);
+
   const visibleSummary = useMemo(() => {
-    const visibleRows = rows.filter((row) => !row.isDraft);
-    const deposits = visibleRows.reduce((sum, row) => {
+    const persistedVisibleRows = visibleRows.filter((row) => !row.isDraft);
+    const deposits = persistedVisibleRows.reduce((sum, row) => {
       const amount = Number(row.amountMxn);
       return Number.isFinite(amount) && amount > 0 ? sum + amount : sum;
     }, 0);
-    const withdrawals = visibleRows.reduce((sum, row) => {
+    const withdrawals = persistedVisibleRows.reduce((sum, row) => {
       const amount = Number(row.amountMxn);
       return Number.isFinite(amount) && amount < 0 ? sum + Math.abs(amount) : sum;
     }, 0);
-    const net = visibleRows.reduce((sum, row) => {
+    const net = persistedVisibleRows.reduce((sum, row) => {
       const amount = Number(row.amountMxn);
       return Number.isFinite(amount) ? sum + amount : sum;
     }, 0);
 
     return {
-      count: visibleRows.length,
+      count: persistedVisibleRows.length,
       depositsLabel: formatCurrencyTotal(deposits),
       withdrawalsLabel: formatCurrencyTotal(withdrawals),
       netLabel: formatCurrencyTotal(net),
     };
-  }, [rows]);
+  }, [visibleRows]);
 
   const instrumentSummaryRows = useMemo<InstrumentSummaryRow[]>(() => {
     const summaryByEntity = new Map<string, { entityName: string; deposits: number; withdrawals: number; net: number }>();
 
-    for (const row of rows) {
+    for (const row of visibleRows) {
       if (row.isDraft || !row.entityId) {
         continue;
       }
@@ -640,7 +666,7 @@ export function InvestmentsPage() {
         portfolioWeightLabel: formatPercent(totalNet > 0 ? row.netValue / totalNet : null),
       }))
       .sort((left, right) => left.entityName.localeCompare(right.entityName, 'es'));
-  }, [entityById, entityLabelById, lifetimeNetByEntity, rows]);
+  }, [entityById, entityLabelById, lifetimeNetByEntity, visibleRows]);
 
   const entityStatusSummary = useMemo(() => {
     const openCount = instrumentSummaryRows.filter((row) => !row.isClosed).length;
@@ -709,6 +735,23 @@ export function InvestmentsPage() {
       return 0;
     });
   }, [instrumentSummaryRows, summarySortColumns]);
+
+  function renderEntityHeaderCell(props: RenderHeaderCellProps<InvestmentGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Entidad</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar movimientos de inversión por entidad"
+          options={entityFilterOptions}
+          value={entityFilterId}
+          onChange={(value) => {
+            setEntityFilterId(value);
+          }}
+        />
+      </div>
+    );
+  }
 
   const summaryColumnsByKey = useMemo<Record<SummaryColumnKey, Column<InstrumentSummaryRow, InstrumentSummaryTotalRow>>>(() => ({
     entityName: {
@@ -866,7 +909,9 @@ export function InvestmentsPage() {
       key: 'entityId',
       name: 'Entidad',
       width: 170,
+      headerCellClass: 'grid-header-filter-cell',
       draggable: true,
+      renderHeaderCell: renderEntityHeaderCell,
       renderCell: ({ row }) => entityLabelById.get(row.entityId) ?? '-',
       renderEditCell: (props) => <SelectCellEditor {...props} options={entityOptions} />,
     },
@@ -906,7 +951,7 @@ export function InvestmentsPage() {
       draggable: true,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  }), [entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
+  }), [entityFilterId, entityFilterOptions, entityLabelById, entityOptions, handleDeleteRow, handleRevertRow, persistRow]);
 
   const columns = useMemo<readonly Column<InvestmentGridRow>[]>(
     () => investmentColumnOrder.map((key) => investmentColumnsByKey[key]),
@@ -984,9 +1029,9 @@ export function InvestmentsPage() {
           <DataGrid
             ref={gridRef}
             columns={columns}
-            rows={rows}
+            rows={visibleRows}
             rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
