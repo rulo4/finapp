@@ -121,3 +121,12 @@ Local Supabase endpoints: API `http://127.0.0.1:54321`, Studio `http://127.0.0.1
 - Prefer `numeric(18,6)` for monetary and quantity columns.
 - All currency amounts are stored in both original currency and MXN equivalent when applicable.
 - Do not add testing libraries or linters not already present.
+
+## Guided Tours
+- For guided product tours, prefer `driver.js` over `react-joyride` unless the user explicitly asks otherwise.
+- Tours should be independent per page; do not introduce cross-route tour orchestration by default.
+- Keep shared tour implementation under `src/features/tours/` and keep page business logic free of tour-specific orchestration when possible.
+- Use stable `data-tour` attributes for targets instead of styling classes or fragile DOM selectors.
+- In pages using `react-data-grid`, target stable containers, filters, headers, or toolbars instead of transient cells/editors.
+- Keep tour copy short, in Spanish, and usable on both desktop and mobile.
+- Follow the detailed architecture in `docs/guided-tours-architecture.md` when implementing tours page by page.

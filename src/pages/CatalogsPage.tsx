@@ -791,20 +791,26 @@ export function CatalogsPage() {
 
   return (
     <div className="page">
-      <section className="card catalog-layout">
+      <section
+        className="card catalog-layout"
+        data-tour="catalogs-page"
+        data-tour-catalog-key={selectedCatalog.key}
+        data-tour-catalog-label={selectedCatalog.label}
+        data-tour-catalog-description={selectedCatalog.description}
+      >
         <section className="catalog-panel">
           <div className="catalog-panel__header catalog-panel__header--compact">
-            <div className="catalog-selector">
+            <div className="catalog-selector" data-tour="catalogs-selector">
               <AppSelect ariaLabel="Catalogo activo" options={catalogOptions} value={selectedCatalogKey} onChange={setSelectedCatalogKey} />
             </div>
-            <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`}>
+            <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`} data-tour="catalogs-status">
               {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}
             </span>
           </div>
 
           {visibleErrorMessage ? <div className="feedback-banner feedback-banner--error">{visibleErrorMessage}</div> : null}
 
-          <div className="grid-wrapper grid-wrapper--tall">
+          <div className="grid-wrapper grid-wrapper--tall" data-tour="catalogs-grid">
             <DataGrid
               ref={gridRef}
               columns={columns}
