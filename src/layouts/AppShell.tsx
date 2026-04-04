@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faAnglesLeft, faAnglesRight, faBars, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
+import { faAnglesLeft, faAnglesRight, faBars, faCircleQuestion, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
 import { navigationItems } from '../config/navigation';
 import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
 import { useAuth } from '../features/auth/AuthContext';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
+import { usePageTour } from '../features/tours/usePageTour';
 
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'finapp.sidebar.collapsed';
 
@@ -18,6 +19,7 @@ function getPageTitle(pathname: string) {
 export function AppShell() {
   const location = useLocation();
   const { user, signOut } = useAuth();
+  const { hasTour, startTour } = usePageTour(location.pathname);
   const matchesCompactShell = useMediaQuery('(max-width: 900px)');
   const isCompactShell = ENABLE_MOBILE_OPTIMIZED_LAYOUTS && matchesCompactShell;
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
@@ -124,6 +126,20 @@ export function AppShell() {
             <h2 className="topbar__title">{getPageTitle(location.pathname)}</h2>
           </div>
           <div className="topbar__actions">
+            {hasTour ? (
+              <button
+                type="button"
+                className="topbar__button topbar__button--icon"
+                onClick={() => {
+                  void startTour();
+                }}
+                aria-label="Abrir tour"
+                title="Abrir tour"
+                data-tour="topbar-help"
+              >
+                <FontAwesomeIcon icon={faCircleQuestion} />
+              </button>
+            ) : null}
             <div className="topbar__session">
               <strong>{user?.email ?? 'Usuario autenticado'}</strong>
             </div>

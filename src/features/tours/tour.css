@@ -1,0 +1,73 @@
+.app-tour-popover {
+  max-width: min(92vw, 420px);
+  padding: 0;
+  border: 1px solid #dbe4f0;
+  border-radius: 18px;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+}
+
+.app-tour-popover .driver-popover-title {
+  padding: 18px 20px 0;
+  color: #0f172a;
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.app-tour-popover .driver-popover-description {
+  padding: 10px 20px 0;
+  color: #334155;
+  font-size: 0.95rem;
+  line-height: 1.45;
+}
+
+.app-tour-popover .driver-popover-footer {
+  padding: 16px 20px 18px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.app-tour-popover .driver-popover-progress-text {
+  color: #64748b;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.app-tour-popover .driver-popover-prev-btn,
+.app-tour-popover .driver-popover-next-btn,
+.app-tour-popover .driver-popover-close-btn {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: none;
+  text-shadow: none;
+}
+
+.app-tour-popover .driver-popover-next-btn {
+  background: #0f172a;
+  border-color: #0f172a;
+  color: #ffffff;
+}
+
+.app-tour-popover .driver-popover-arrow {
+  color: #ffffff;
+}
+
+.tour-popover__stack {
+  display: grid;
+  gap: 8px;
+}
+
+.tour-popover__stack p {
+  margin: 0;
+}
+
+.tour-popover__list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 6px;
+}
+
+.tour-popover__list li {
+  margin: 0;
+}

@@ -86,6 +86,7 @@ En local, la confirmacion por correo esta desactivada, asi que el acceso es inme
 ## Documentacion operativa
 - despliegue completo de `staging` y `production`: [DEPLOY.md](DEPLOY.md)
 - plan funcional original: [plan-finapp.prompt.md](plan-finapp.prompt.md)
+- arquitectura de tours guiados: [docs/guided-tours-architecture.md](docs/guided-tours-architecture.md)
 
 ## Supabase local
 - levantar stack: `pnpm run supabase:start`
