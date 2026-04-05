@@ -126,7 +126,7 @@ function formatDividendIssuesMessage(row: DividendGridRow) {
 
 function validateDividendRow(row: DividendGridRow) {
   if (!row.entryDate || !isIsoDateString(row.entryDate)) {
-    return 'usa una fecha valida en formato AAAA-MM-DD';
+    return 'usa una fecha válida en formato AAAA-MM-DD';
   }
 
   if (!row.securityId) {
@@ -139,12 +139,12 @@ function validateDividendRow(row: DividendGridRow) {
 
   const gross = Number(row.grossAmountOriginal);
   if (!row.grossAmountOriginal.trim() || !Number.isFinite(gross) || gross < 0) {
-    return 'usa un bruto valido';
+    return 'usa un bruto válido';
   }
 
   const tax = Number(row.taxWithheldOriginal || '0');
   if (!Number.isFinite(tax) || tax < 0) {
-    return 'usa una retención valida';
+    return 'usa una retención válida';
   }
 
   if (tax > gross) {
@@ -199,7 +199,7 @@ export function DividendsGridPage() {
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
@@ -306,7 +306,7 @@ export function DividendsGridPage() {
 
   const persistRow = useCallback(async (rowId: string) => {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para guardar dividendos.');
+      setFeedback('Supabase no está disponible para guardar dividendos.');
       return;
     }
 
@@ -425,7 +425,7 @@ export function DividendsGridPage() {
     }
 
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para eliminar dividendos.');
+      setFeedback('Supabase no está disponible para eliminar dividendos.');
       return;
     }
 

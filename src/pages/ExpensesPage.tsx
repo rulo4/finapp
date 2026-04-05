@@ -235,7 +235,7 @@ async function fetchAllExpenseEntries(activeDateRange: { start: string; end: str
   if (!supabase) {
     return {
       data: null as ExpenseEntryRow[] | null,
-      error: new Error('Supabase no esta disponible.'),
+      error: new Error('Supabase no está disponible.'),
     };
   }
 
@@ -455,7 +455,7 @@ function evaluateArithmeticExpression(expression: string) {
     }
 
     if (start === index) {
-      throw new Error('Expresion invalida');
+      throw new Error('Expresión inválida');
     }
 
     const token = source.slice(start, index);
@@ -477,14 +477,14 @@ function evaluateArithmeticExpression(expression: string) {
     const value = parseExpression();
 
     if (index !== source.length) {
-      return { value: null, error: 'Expresion invalida' };
+      return { value: null, error: 'Expresión inválida' };
     }
 
     return { value, error: null };
   } catch (error) {
     return {
       value: null,
-      error: error instanceof Error ? error.message : 'Expresion invalida',
+      error: error instanceof Error ? error.message : 'Expresión inválida',
     };
   }
 }
@@ -572,7 +572,7 @@ export function ExpensesPage() {
     }
 
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
@@ -587,7 +587,7 @@ export function ExpensesPage() {
     ]);
 
     if (categoriesResult.error) {
-      setFeedback(`No fue posible cargar categorias: ${categoriesResult.error.message}`);
+      setFeedback(`No fue posible cargar categorías: ${categoriesResult.error.message}`);
       setIsLoading(false);
       return;
     }
@@ -693,7 +693,7 @@ export function ExpensesPage() {
   const persistExpenseRow = useCallback(
     async (rowId: string) => {
       if (!supabase) {
-        setFeedback('Supabase no esta disponible para guardar egresos.');
+        setFeedback('Supabase no está disponible para guardar egresos.');
         return;
       }
 
@@ -835,7 +835,7 @@ export function ExpensesPage() {
       }
 
       if (!supabase) {
-        setFeedback('Supabase no esta disponible para eliminar egresos.');
+        setFeedback('Supabase no está disponible para eliminar egresos.');
         return;
       }
 
@@ -883,11 +883,11 @@ export function ExpensesPage() {
       rowsRef.current = nextRows;
       return nextRows;
     });
-    setFeedback('Se restauraron los ultimos valores guardados de la fila.');
+    setFeedback('Se restauraron los últimos valores guardados de la fila.');
   }, []);
 
   const categoryOptions = useMemo<readonly SelectOption[]>(
-    () => [{ value: '', label: 'Selecciona una categoria' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
+    () => [{ value: '', label: 'Selecciona una categoría' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
     [categories],
   );
   const paymentInstrumentOptions = useMemo<readonly SelectOption[]>(
@@ -1077,10 +1077,10 @@ export function ExpensesPage() {
   function renderCategoryHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
     return (
       <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
-        <div className="grid-header-filter__label">Categoria</div>
+        <div className="grid-header-filter__label">Categoría</div>
         <AppSelect
           compact
-          ariaLabel="Filtrar egresos por categoria"
+          ariaLabel="Filtrar egresos por categoría"
           options={categoryFilterOptions}
           value={tableFilters.categoryId}
           placeholder="Todas"
@@ -1235,7 +1235,7 @@ export function ExpensesPage() {
       },
       {
         key: 'categoryId',
-        name: 'Categoria',
+        name: 'Categoría',
         width: CATEGORY_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderCategoryHeaderCell,

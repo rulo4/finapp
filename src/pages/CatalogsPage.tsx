@@ -1,8 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { type IconDefinition } from '@fortawesome/fontawesome-svg-core';
+import {
+  faBuildingColumns,
+  faChartLine,
+  faCreditCard,
+  faEraser,
+  faFloppyDisk,
+  faMoneyBillWave,
+  faRotateLeft,
+  faScaleBalanced,
+  faStore,
+  faTags,
+  faTrash,
+  faWallet,
+} from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type PaymentInstrumentType = 'cash' | 'debit_card' | 'credit_card';
@@ -14,6 +28,7 @@ type CatalogConfig = {
   label: string;
   description: string;
   kind: CatalogKind;
+  icon: IconDefinition;
 };
 
 type CatalogDbRow = {
@@ -81,58 +96,66 @@ const currencyOptions: readonly SelectOption[] = [
 ];
 
 const activeOptions: readonly SelectOption[] = [
-  { value: 'true', label: 'Si' },
+  { value: 'true', label: 'Sí' },
   { value: 'false', label: 'No' },
 ];
 
 const catalogConfigs: CatalogConfig[] = [
   {
     key: 'expense_categories',
-    label: 'Categorias de gasto',
-    description: 'Clasifica egresos recurrentes y operativos.',
+    label: 'Categorías de gasto',
+    description: 'Clasifica tus egresos para entender mejor a dónde va tu dinero y agilizar la captura.',
     kind: 'basic',
+    icon: faTags,
   },
   {
     key: 'income_sources',
     label: 'Fuentes de ingreso',
-    description: 'Define de donde proviene cada ingreso capturado.',
+    description: 'Define de dónde provienen tus ingresos.',
     kind: 'basic',
+    icon: faMoneyBillWave,
   },
   {
     key: 'payment_instruments',
     label: 'Instrumentos de pago',
-    description: 'Administra efectivo, debito y credito para egresos.',
+    description: 'Administra efectivo, débito y crédito para tus egresos.',
     kind: 'payment_instruments',
+    icon: faCreditCard,
   },
   {
     key: 'stores',
     label: 'Tiendas',
-    description: 'Catalogo de comercios asociados a consumos y compras.',
+    description: 'Catálogo de comercios asociados a tus consumos y compras.',
     kind: 'basic',
+    icon: faStore,
   },
   {
     key: 'unit_of_measures',
     label: 'Unidades de medida',
-    description: 'Define unidades reutilizables para capturar egresos sin texto libre.',
+    description: 'Unidades para capturar tus egresos sin texto libre.',
     kind: 'basic',
+    icon: faScaleBalanced,
   },
   {
     key: 'brokers',
     label: 'Brokers',
-    description: 'Intermediarios para operaciones de inversión.',
+    description: 'Intermediarios para tus operaciones de inversión.',
     kind: 'brokers',
+    icon: faBuildingColumns,
   },
   {
     key: 'investment_entities',
     label: 'Entidades de inversión',
-    description: 'Vehículos no bursátiles usados en inversiones de ledger.',
+    description: 'Vehículos no bursátiles usados en tus inversiones.',
     kind: 'basic',
+    icon: faWallet,
   },
   {
     key: 'securities',
     label: 'Valores bursátiles',
-    description: 'Catálogo maestro para compras, ventas y dividendos.',
+    description: 'Catálogo maestro para tus compras, ventas y dividendos.',
     kind: 'securities',
+    icon: faChartLine,
   },
 ];
 
@@ -235,7 +258,7 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
     }
 
     if (row.currencyCode !== 'MXN' && row.currencyCode !== 'USD') {
-      return 'Selecciona una moneda valida.';
+      return 'Selecciona una moneda válida.';
     }
 
     if (row.websiteUrl.trim()) {
@@ -246,7 +269,7 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
           return 'La URL debe iniciar con http:// o https://.';
         }
       } catch {
-        return 'La URL del sitio no es valida.';
+        return 'La URL del sitio no es válida.';
       }
     }
   } else {
@@ -261,17 +284,17 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
     if (config.kind === 'brokers') {
       const defaultFeeFactor = Number(row.defaultFeeFactor || '0');
       if (!Number.isFinite(defaultFeeFactor) || defaultFeeFactor < 0) {
-        return 'El factor de comisión debe ser un numero mayor o igual a cero.';
+        return 'El factor de comisión debe ser un número mayor o igual a cero.';
       }
     }
   }
 
   if (row.isActive !== 'true' && row.isActive !== 'false') {
-    return 'El estado activo no es valido.';
+    return 'El estado activo no es válido.';
   }
 
   if (config.key === 'investment_entities' && row.isClosed !== 'true' && row.isClosed !== 'false') {
-    return 'El estado de cierre no es valido.';
+    return 'El estado de cierre no es válido.';
   }
 
   return null;
@@ -311,7 +334,6 @@ export function CatalogsPage() {
     () => catalogConfigs.find((catalog) => catalog.key === selectedCatalogKey) ?? defaultCatalog,
     [selectedCatalogKey],
   );
-  const catalogOptions = useMemo<readonly SelectOption[]>(() => catalogConfigs.map((catalog) => ({ value: catalog.key, label: catalog.label })), []);
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -321,7 +343,7 @@ export function CatalogsPage() {
     if (!supabase || !isSupabaseConfigured()) {
       setRows([]);
       persistedRowsRef.current = new Map();
-      setErrorMessage('Supabase no esta configurado en este entorno.');
+      setErrorMessage('Supabase no está configurado en este entorno.');
       return;
     }
 
@@ -370,7 +392,7 @@ export function CatalogsPage() {
   const persistCatalogRow = useCallback(
     async (rowId: string) => {
       if (!supabase) {
-        setErrorMessage('Supabase no esta disponible para guardar datos.');
+        setErrorMessage('Supabase no está disponible para guardar datos.');
         return;
       }
 
@@ -488,11 +510,11 @@ export function CatalogsPage() {
       }
 
       if (!supabase) {
-        setErrorMessage('Supabase no esta disponible para eliminar datos.');
+        setErrorMessage('Supabase no está disponible para eliminar datos.');
         return;
       }
 
-      if (!window.confirm('Eliminar este registro?')) {
+      if (!window.confirm('¿Eliminar este registro?')) {
         return;
       }
 
@@ -722,7 +744,7 @@ export function CatalogsPage() {
           key: 'isActive',
           name: 'Act.',
           width: 76,
-          renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
+          renderCell: ({ row }) => (row.isActive === 'true' ? 'Sí' : 'No'),
           renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
         },
       ];
@@ -738,7 +760,7 @@ export function CatalogsPage() {
       },
       {
         key: 'description',
-        name: 'Descripcion',
+        name: 'Descripción',
         width: selectedCatalog.key === 'expense_categories' ? LONG_DESCRIPTION_COLUMN_WIDTH : DEFAULT_COLUMN_WIDTH,
         renderCell: ({ row }) => row.description || '-',
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Contexto opcional" />,
@@ -769,7 +791,7 @@ export function CatalogsPage() {
       key: 'isActive',
       name: 'Act.',
       width: 76,
-      renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
+      renderCell: ({ row }) => (row.isActive === 'true' ? 'Sí' : 'No'),
       renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
     });
 
@@ -778,7 +800,7 @@ export function CatalogsPage() {
         key: 'isClosed',
         name: 'Cer.',
         width: 76,
-        renderCell: ({ row }) => (row.isClosed === 'true' ? 'Si' : 'No'),
+        renderCell: ({ row }) => (row.isClosed === 'true' ? 'Sí' : 'No'),
         renderEditCell: (props) => <SelectCellEditor {...props} options={activeOptions} />,
       });
     }
@@ -801,16 +823,40 @@ export function CatalogsPage() {
         <section className="catalog-panel">
           <div className="catalog-panel__header catalog-panel__header--compact">
             <div className="catalog-selector" data-tour="catalogs-selector">
-              <AppSelect ariaLabel="Catalogo activo" options={catalogOptions} value={selectedCatalogKey} onChange={setSelectedCatalogKey} />
+              <div className="catalog-tabs" role="tablist" aria-label="Catálogos">
+                {catalogConfigs.map((catalog) => {
+                  const isActive = catalog.key === selectedCatalogKey;
+
+                  return (
+                    <button
+                      key={catalog.key}
+                      type="button"
+                      role="tab"
+                      className={`catalog-tab${isActive ? ' catalog-tab--active' : ''}`}
+                      data-tour={`catalog-tab-${catalog.key}`}
+                      aria-selected={isActive}
+                      aria-controls="catalogs-grid-panel"
+                      aria-label={catalog.label}
+                      title={catalog.label}
+                      onClick={() => setSelectedCatalogKey(catalog.key)}
+                    >
+                      <FontAwesomeIcon icon={catalog.icon} />
+                      {isActive ? <span className="catalog-tab__label">{catalog.label}</span> : null}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`} data-tour="catalogs-status">
-              {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}
-            </span>
+            <div className="catalog-panel__meta">
+              <span className={`status-pill status-pill--${isLoading ? 'checking' : 'ok'}`} data-tour="catalogs-status">
+                {isLoading ? 'Cargando' : `${rows.filter((row) => !row.isDraft).length} registros`}
+              </span>
+            </div>
           </div>
 
           {visibleErrorMessage ? <div className="feedback-banner feedback-banner--error">{visibleErrorMessage}</div> : null}
 
-          <div className="grid-wrapper grid-wrapper--tall" data-tour="catalogs-grid">
+          <div id="catalogs-grid-panel" className="grid-wrapper grid-wrapper--tall" data-tour="catalogs-grid">
             <DataGrid
               ref={gridRef}
               columns={columns}

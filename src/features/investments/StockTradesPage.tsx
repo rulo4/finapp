@@ -203,7 +203,7 @@ function formatTradeIssuesMessage(row: TradeGridRow) {
 
 function validateTradeRow(row: TradeGridRow, kind: TradeKind) {
   if (!row.tradeDate || !isIsoDateString(row.tradeDate)) {
-    return 'usa una fecha valida en formato AAAA-MM-DD';
+    return 'usa una fecha válida en formato AAAA-MM-DD';
   }
 
   if (!row.securityId) {
@@ -226,7 +226,7 @@ function validateTradeRow(row: TradeGridRow, kind: TradeKind) {
 
   const fees = Number(row.feesOriginal || '0');
   if (!Number.isFinite(fees) || fees < 0) {
-    return 'usa una comisión valida';
+    return 'usa una comisión válida';
   }
 
   const fxRate = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
@@ -366,7 +366,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
@@ -557,7 +557,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
   const persistRow = useCallback(async (rowId: string) => {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para guardar movimientos.');
+      setFeedback('Supabase no está disponible para guardar movimientos.');
       return;
     }
 
@@ -752,7 +752,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     }
 
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para eliminar movimientos.');
+      setFeedback('Supabase no está disponible para eliminar movimientos.');
       return;
     }
 

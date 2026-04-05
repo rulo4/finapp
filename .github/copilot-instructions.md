@@ -89,6 +89,7 @@ All pages are lazy-loaded via `React.lazy` + `<Suspense>`. Routes are nested ins
 - Sidebar collapse state is persisted in `localStorage` under key `finapp.sidebar.collapsed`.
 - Usa el menor texto posible en la UI; prefiere iconos claros cuando el contexto del campo o la acción siga siendo obvio.
 - En acciones o columnas compactas, favorece icon-only buttons con `aria-label` y `title` en lugar de texto visible repetitivo.
+- Todo texto visible al usuario en español debe respetar ortografía, acentuación y puntuación correctas; no omitas tildes en labels, mensajes, ayudas ni tours.
 
 ## Data Grid Pattern
 Use `react-data-grid` for tabular data entry. Shared cell editors live in `src/features/shared/gridEditors.tsx`:

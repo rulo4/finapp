@@ -573,7 +573,7 @@ export function DashboardPage() {
       );
       const expensesByCategory = buildChartData(
         ((expenseResult.data as ExpenseDashboardRow[]) ?? []).map((row) => ({
-          label: normalizeLabel(pickRelationName(row.expense_categories), 'Sin categoria'),
+          label: normalizeLabel(pickRelationName(row.expense_categories), 'Sin categoría'),
           value: Number(row.total_amount_mxn ?? 0),
         })),
       );
@@ -622,8 +622,8 @@ export function DashboardPage() {
     ) : activeTab === 'expense' ? (
       <div className="dashboard-tab-grid">
         <DashboardChartCard
-          title="Egresos por categoria"
-          description="Suma de egresos MXN agrupados por categoria dentro del periodo activo."
+          title="Egresos por categoría"
+          description="Suma de egresos MXN agrupados por categoría dentro del periodo activo."
           data={dashboardData.expensesByCategory}
           chartVariant={activeChartVariant}
           emptyMessage="No hay egresos visibles en el periodo actual."

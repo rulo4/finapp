@@ -63,7 +63,7 @@ export function AppShell() {
       <button
         type="button"
         className={clsx('shell-backdrop', isMobileNavOpen && 'shell-backdrop--visible')}
-        aria-label="Cerrar menu"
+        aria-label="Cerrar menú"
         aria-hidden={!isMobileNavOpen}
         tabIndex={isMobileNavOpen ? 0 : -1}
         onClick={() => setIsMobileNavOpen(false)}
@@ -121,7 +121,7 @@ export function AppShell() {
           <div className="topbar__leading">
             <button type="button" className="topbar__menu" onClick={() => setIsMobileNavOpen(true)}>
               <FontAwesomeIcon icon={faBars} />
-              <span>Menu</span>
+              <span>Menú</span>
             </button>
             <h2 className="topbar__title">{getPageTitle(location.pathname)}</h2>
           </div>
@@ -129,7 +129,7 @@ export function AppShell() {
             {hasTour ? (
               <button
                 type="button"
-                className="topbar__button topbar__button--icon"
+                className="topbar__button topbar__button--icon topbar__button--tour"
                 onClick={() => {
                   void startTour();
                 }}
@@ -147,8 +147,8 @@ export function AppShell() {
               type="button"
               className="topbar__button topbar__button--icon"
               onClick={() => void signOut()}
-              aria-label="Cerrar sesion"
-              title="Cerrar sesion"
+              aria-label="Cerrar sesión"
+              title="Cerrar sesión"
             >
               <FontAwesomeIcon icon={faRightFromBracket} />
             </button>

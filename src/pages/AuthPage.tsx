@@ -51,7 +51,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     event.preventDefault();
 
     if (!supabase) {
-      setMessage('Supabase no esta disponible en este entorno.');
+      setMessage('Supabase no está disponible en este entorno.');
       return;
     }
 
@@ -60,7 +60,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     if (variant === 'sign-in') {
       const { error } = await supabase.auth.signInWithPassword({ email, password });
 
-      setMessage(error ? `No fue posible iniciar sesion: ${error.message}` : 'Sesion iniciada correctamente.');
+      setMessage(error ? `No fue posible iniciar sesión: ${error.message}` : 'Sesión iniciada correctamente.');
       setIsSubmitting(false);
       return;
     }
@@ -74,7 +74,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     }
 
     if (data.session) {
-      setMessage('Cuenta creada y sesion iniciada.');
+      setMessage('Cuenta creada y sesión iniciada.');
     } else {
       setMessage('Cuenta creada. Espera el correo para confirmar tu cuenta y revisa spam si no lo ves.');
     }
