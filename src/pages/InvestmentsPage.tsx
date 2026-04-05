@@ -283,7 +283,7 @@ export function InvestmentsPage() {
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
@@ -388,7 +388,7 @@ export function InvestmentsPage() {
 
   const persistRow = useCallback(async (rowId: string) => {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para guardar movimientos.');
+      setFeedback('Supabase no está disponible para guardar movimientos.');
       return;
     }
 
@@ -503,7 +503,7 @@ export function InvestmentsPage() {
     }
 
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para eliminar movimientos.');
+      setFeedback('Supabase no está disponible para eliminar movimientos.');
       return;
     }
 

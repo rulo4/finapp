@@ -184,7 +184,7 @@ function getStatusTone(status: TicketStatus) {
 
 function validateReviewRow(row: ReviewRow) {
   if (!row.entryDate || !isIsoDateString(row.entryDate)) {
-    return 'usa una fecha valida en formato AAAA-MM-DD';
+    return 'usa una fecha válida en formato AAAA-MM-DD';
   }
 
   if (!row.concept.trim()) {
@@ -286,7 +286,7 @@ export function TicketScanPage() {
   useEffect(() => {
     async function loadCatalogs() {
       if (!supabase || !isSupabaseConfigured()) {
-        setFeedback('Supabase no esta configurado en este entorno.');
+        setFeedback('Supabase no está configurado en este entorno.');
         return;
       }
 
@@ -301,7 +301,7 @@ export function TicketScanPage() {
       const firstError = categoriesResult.error || paymentInstrumentsResult.error || storesResult.error || unitsResult.error;
 
       if (firstError) {
-        setFeedback(`No fue posible cargar los catalogos necesarios: ${firstError.message}`);
+        setFeedback(`No fue posible cargar los catálogos necesarios: ${firstError.message}`);
         setIsCatalogsLoading(false);
         return;
       }
@@ -353,7 +353,7 @@ export function TicketScanPage() {
   }, [ticketId]);
 
   const categoryOptions = useMemo<readonly SelectOption[]>(
-    () => [{ value: '', label: 'Sin categoria' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
+    () => [{ value: '', label: 'Sin categoría' }, ...categories.map((category) => ({ value: category.id, label: category.name }))],
     [categories],
   );
   const paymentInstrumentOptions = useMemo<readonly SelectOption[]>(
@@ -447,7 +447,7 @@ export function TicketScanPage() {
 
   async function processTicketFromStoragePath(storagePath: string) {
     if (!supabase) {
-      throw new Error('Supabase no esta disponible para procesar tickets.');
+      throw new Error('Supabase no está disponible para procesar tickets.');
     }
 
     const { data, error } = await supabase.functions.invoke('process-ticket', {
@@ -469,7 +469,7 @@ export function TicketScanPage() {
 
   async function handleFileSelection(file: File) {
     if (!supabase || !user) {
-      setFeedback('Necesitas una sesion valida para subir tickets.');
+      setFeedback('Necesitas una sesión válida para subir tickets.');
       return;
     }
 
@@ -545,7 +545,7 @@ export function TicketScanPage() {
 
   async function handleSaveExpenses() {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para guardar egresos.');
+      setFeedback('Supabase no está disponible para guardar egresos.');
       return;
     }
 
@@ -651,7 +651,7 @@ export function TicketScanPage() {
       },
       {
         key: 'categoryId',
-        name: 'Categoria',
+        name: 'Categoría',
         width: 130,
         renderCell: ({ row }) => categoryOptions.find((option) => option.value === row.categoryId)?.label ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,

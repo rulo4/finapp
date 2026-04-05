@@ -2,15 +2,15 @@ import { type IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import {
   faArrowTrendDown,
   faArrowTrendUp,
-  faChartLine,
+  faBriefcase,
   faChartPie,
-  faCoins,
+  faChartSimple,
   faCreditCard,
   faFolderOpen,
   faHandHoldingDollar,
+  faMoneyBillTrendUp,
+  faPiggyBank,
   faReceipt,
-  faTableList,
-  faWallet,
 } from '@fortawesome/free-solid-svg-icons';
 
 export type NavigationItem = {
@@ -20,15 +20,15 @@ export type NavigationItem = {
 };
 
 export const navigationItems: readonly NavigationItem[] = [
-  { label: 'Dashboard', to: '/dashboard', icon: faChartLine },
+  { label: 'Dashboard', to: '/dashboard', icon: faChartSimple },
   { label: 'Ingresos', to: '/income', icon: faArrowTrendUp },
   { label: 'Egresos', to: '/expenses', icon: faArrowTrendDown },
   { label: 'Tarjetas', to: '/credit-cards', icon: faCreditCard },
-  { label: 'Inversión', to: '/investments', icon: faWallet },
-  { label: 'Compras de acciones', to: '/stocks/buys', icon: faTableList },
-  { label: 'Ventas de acciones', to: '/stocks/sells', icon: faHandHoldingDollar },
+  { label: 'Inversión', to: '/investments', icon: faPiggyBank },
+  { label: 'Compras de acciones', to: '/stocks/buys', icon: faBriefcase },
+  { label: 'Ventas de acciones', to: '/stocks/sells', icon: faMoneyBillTrendUp },
   { label: 'Posiciones de acciones', to: '/stocks/holdings', icon: faChartPie },
-  { label: 'Dividendos', to: '/dividends', icon: faCoins },
+  { label: 'Dividendos', to: '/dividends', icon: faHandHoldingDollar },
   { label: 'Tickets', to: '/tickets', icon: faReceipt },
   { label: 'Catálogos', to: '/catalogs', icon: faFolderOpen },
 ];

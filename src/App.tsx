@@ -21,7 +21,7 @@ function RouteFallback() {
   return (
     <div className="page">
       <section className="card">
-        <p className="card__text">Cargando modulo...</p>
+        <p className="card__text">Cargando módulo...</p>
       </section>
     </div>
   );

@@ -7,14 +7,20 @@
 }
 
 .app-tour-popover .driver-popover-title {
-  padding: 18px 20px 0;
+  display: block;
+  margin: 0;
+  padding: 22px 56px 8px 24px;
+  border-bottom: 1px solid #e5e7eb;
+  border-radius: 18px 18px 0 0;
+  background: #ffffff;
   color: #0f172a;
   font-size: 1rem;
   font-weight: 800;
+  line-height: 1.1;
 }
 
 .app-tour-popover .driver-popover-description {
-  padding: 10px 20px 0;
+  padding: 12px 24px 0;
   color: #334155;
   font-size: 0.95rem;
   line-height: 1.45;
@@ -34,18 +40,37 @@
 .app-tour-popover .driver-popover-prev-btn,
 .app-tour-popover .driver-popover-next-btn,
 .app-tour-popover .driver-popover-close-btn {
-  border: 1px solid #cbd5e1;
+  border: 1px solid #374151;
   border-radius: 10px;
-  background: #ffffff;
-  color: #0f172a;
+  background: #111827;
+  color: #f9fafb;
   box-shadow: none;
   text-shadow: none;
 }
 
-.app-tour-popover .driver-popover-next-btn {
-  background: #0f172a;
-  border-color: #0f172a;
-  color: #ffffff;
+.app-tour-popover .driver-popover-close-btn {
+  top: 14px;
+  right: 14px;
+  border-color: transparent;
+  background: #f9fafb;
+  color: #111827;
+}
+
+.app-tour-popover .driver-popover-prev-btn:hover,
+.app-tour-popover .driver-popover-next-btn:hover,
+.app-tour-popover .driver-popover-close-btn:hover {
+  background: #1f2937;
+}
+
+.app-tour-popover .driver-popover-close-btn:hover {
+  background: #e5e7eb;
+}
+
+.app-tour-popover .driver-popover-prev-btn:focus-visible,
+.app-tour-popover .driver-popover-next-btn:focus-visible,
+.app-tour-popover .driver-popover-close-btn:focus-visible {
+  outline: 3px solid #4b5563;
+  outline-offset: 2px;
 }
 
 .app-tour-popover .driver-popover-arrow {

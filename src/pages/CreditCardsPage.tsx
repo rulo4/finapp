@@ -90,7 +90,7 @@ type CreditCardReconciliationGridRow = {
 };
 
 const BOOLEAN_OPTIONS: readonly SelectOption[] = [
-  { value: 'true', label: 'Si' },
+  { value: 'true', label: 'Sí' },
   { value: 'false', label: 'No' },
 ];
 
@@ -328,7 +328,7 @@ export function CreditCardsPage() {
     if (!supabase || !isSupabaseConfigured()) {
       setConfigRows([]);
       setSelectedInstrumentId('');
-      setErrorMessage('Supabase no esta configurado en este entorno.');
+      setErrorMessage('Supabase no está configurado en este entorno.');
       return;
     }
 
@@ -525,7 +525,7 @@ export function CreditCardsPage() {
   const persistConfigRow = useCallback(
     async (rowId: string) => {
       if (!supabase) {
-        setErrorMessage('Supabase no esta disponible para guardar tarjetas.');
+        setErrorMessage('Supabase no está disponible para guardar tarjetas.');
         return;
       }
 
@@ -590,7 +590,7 @@ export function CreditCardsPage() {
       }
 
       if (!supabase) {
-        setErrorMessage('Supabase no esta disponible para eliminar tarjetas.');
+        setErrorMessage('Supabase no está disponible para eliminar tarjetas.');
         return;
       }
 
@@ -671,7 +671,7 @@ export function CreditCardsPage() {
       }
 
       if (!supabase) {
-        setErrorMessage('Supabase no esta disponible para eliminar movimientos.');
+        setErrorMessage('Supabase no está disponible para eliminar movimientos.');
         return;
       }
 
@@ -967,7 +967,7 @@ export function CreditCardsPage() {
       key: 'isActive',
       name: 'Act.',
       width: 72,
-      renderCell: ({ row }) => (row.isActive === 'true' ? 'Si' : 'No'),
+      renderCell: ({ row }) => (row.isActive === 'true' ? 'Sí' : 'No'),
       renderEditCell: (props) => <SelectCellEditor {...props} options={BOOLEAN_OPTIONS} />,
     },
     {

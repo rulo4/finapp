@@ -287,7 +287,7 @@ export function IncomePage() {
     }
 
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
@@ -334,7 +334,7 @@ export function IncomePage() {
     rowsRef.current = loadedRows;
     setSources(nextSources);
     setRows(loadedRows);
-    setFeedback(nextSources.length > 0 ? null : 'Primero crea al menos una fuente de ingreso en Catalogos.');
+    setFeedback(nextSources.length > 0 ? null : 'Primero crea al menos una fuente de ingreso en Catálogos.');
     setIsLoading(false);
   }, [activeDateRange]);
 
@@ -400,7 +400,7 @@ export function IncomePage() {
   const persistIncomeRow = useCallback(
     async (rowId: string) => {
       if (!supabase) {
-        setFeedback('Supabase no esta disponible para guardar ingresos.');
+        setFeedback('Supabase no está disponible para guardar ingresos.');
         return;
       }
 
@@ -535,7 +535,7 @@ export function IncomePage() {
       }
 
       if (!supabase) {
-        setFeedback('Supabase no esta disponible para eliminar ingresos.');
+        setFeedback('Supabase no está disponible para eliminar ingresos.');
         return;
       }
 
@@ -586,7 +586,7 @@ export function IncomePage() {
       rowsRef.current = nextRows;
       return nextRows;
     });
-    setFeedback('Se restauraron los ultimos valores guardados de la fila.');
+    setFeedback('Se restauraron los últimos valores guardados de la fila.');
   }, [sources]);
 
   const sourceOptions = useMemo<readonly SelectOption[]>(

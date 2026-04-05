@@ -117,7 +117,7 @@ export function TicketsPage() {
     const activeSupabase = supabase;
 
     if (!activeSupabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado en este entorno.');
+      setFeedback('Supabase no está configurado en este entorno.');
       setTickets([]);
       return;
     }
@@ -169,7 +169,7 @@ export function TicketsPage() {
 
   async function handleDeleteTicket(ticket: TicketGridRow) {
     if (!supabase) {
-      setFeedback('Supabase no esta disponible para eliminar tickets.');
+      setFeedback('Supabase no está disponible para eliminar tickets.');
       return;
     }
 

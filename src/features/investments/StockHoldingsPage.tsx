@@ -88,7 +88,7 @@ export function StockHoldingsPage() {
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
-      setFeedback('Supabase no esta configurado para este entorno.');
+      setFeedback('Supabase no está configurado para este entorno.');
       return;
     }
 
