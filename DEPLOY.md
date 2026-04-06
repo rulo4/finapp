@@ -1,11 +1,11 @@
 # Deployment Guide
 
-Guia operativa para publicar Finapp con el stack recomendado:
+Guia operativa para publicar Auna con el stack recomendado:
 - frontend: Cloudflare Pages
 - backend, auth y base de datos: Supabase Cloud
 - repositorio: GitHub
 
-La recomendacion actual es desplegar primero como beta controlada, no como V1 final completa, porque el alcance implementado todavia es menor que el plan original en [plan-finapp.prompt.md](plan-finapp.prompt.md).
+La recomendacion actual es desplegar primero como beta controlada, no como V1 final completa, porque el alcance implementado todavia es menor que el plan original en [plan-auna.prompt.md](plan-auna.prompt.md).
 
 ## Cuentas necesarias
 Obligatorias:

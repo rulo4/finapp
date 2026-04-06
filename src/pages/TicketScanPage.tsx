@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faImage, faPlus, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
 import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
@@ -29,6 +29,12 @@ type ReviewRow = {
   fxRateToMxn: string;
   totalAmountMxn: string;
   notes: string;
+};
+
+type TicketHeaderState = {
+  entryDate: string;
+  storeId: string;
+  paymentInstrumentId: string;
 };
 
 const GRID_ROW_HEIGHT = 30;
@@ -80,6 +86,27 @@ function toReviewRow(expense: ParsedTicketExpense): ReviewRow {
     totalAmountMxn: '',
     notes: expense.notes ?? '',
   });
+}
+
+function getTicketHeaderFromRows(rows: ReviewRow[]): TicketHeaderState {
+  const firstRow = rows[0];
+
+  return {
+    entryDate: firstRow?.entryDate ?? '',
+    storeId: firstRow?.storeId ?? '',
+    paymentInstrumentId: firstRow?.paymentInstrumentId ?? '',
+  };
+}
+
+function applyTicketHeaderToRows(rows: ReviewRow[], header: TicketHeaderState): ReviewRow[] {
+  return rows.map((row) =>
+    normalizeReviewRow({
+      ...row,
+      entryDate: header.entryDate || row.entryDate,
+      storeId: header.storeId,
+      paymentInstrumentId: header.paymentInstrumentId,
+    }),
+  );
 }
 
 function createEmptyReviewRow(defaults?: Partial<Pick<ReviewRow, 'entryDate' | 'paymentInstrumentId' | 'storeId' | 'currencyCode'>>) {
@@ -209,18 +236,6 @@ function validateReviewRow(row: ReviewRow) {
   return null;
 }
 
-function getSharedFieldState(values: string[]) {
-  if (values.length === 0) {
-    return { value: '', isMixed: false };
-  }
-
-  const firstValue = values[0] ?? '';
-
-  return values.every((value) => value === firstValue)
-    ? { value: firstValue, isMixed: false }
-    : { value: '', isMixed: true };
-}
-
 function isErrorFeedback(message: string) {
   const normalizedMessage = message.trim();
 
@@ -243,12 +258,17 @@ export function TicketScanPage() {
   const [currentTicketId, setCurrentTicketId] = useState<string | null>(null);
   const [currentTicketStatus, setCurrentTicketStatus] = useState<TicketStatus | null>(null);
   const [currentStoragePath, setCurrentStoragePath] = useState<string | null>(null);
+  const [ticketEntryDate, setTicketEntryDate] = useState('');
+  const [ticketStoreId, setTicketStoreId] = useState('');
+  const [ticketPaymentInstrumentId, setTicketPaymentInstrumentId] = useState('');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
   const [isCatalogsLoading, setIsCatalogsLoading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const gridRef = useRef<DataGridHandle>(null);
+  const autoEditCellRef = useRef<string | null>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const galleryInputRef = useRef<HTMLInputElement>(null);
   const ticketId = searchParams.get('ticket');
@@ -327,7 +347,7 @@ export function TicketScanPage() {
 
       const { data, error } = await supabase
         .from('tickets')
-        .select('id, storage_path, status, raw_llm_response, parsed_expenses, error_message, created_at')
+        .select('id, storage_path, status, entry_date, store_id, payment_instrument_id, raw_llm_response, parsed_expenses, error_message, created_at')
         .eq('id', ticketId)
         .single();
 
@@ -338,10 +358,21 @@ export function TicketScanPage() {
       }
 
       const ticket = data as TicketRecord;
+      const initialRows = (ticket.parsed_expenses ?? []).map(toReviewRow);
+      const fallbackHeader = getTicketHeaderFromRows(initialRows);
+      const initialHeader = {
+        entryDate: ticket.entry_date ?? fallbackHeader.entryDate,
+        storeId: ticket.store_id ?? fallbackHeader.storeId,
+        paymentInstrumentId: ticket.payment_instrument_id ?? fallbackHeader.paymentInstrumentId,
+      };
+
       setCurrentTicketId(ticket.id);
       setCurrentTicketStatus(ticket.status);
       setCurrentStoragePath(ticket.storage_path);
-      setRows((ticket.parsed_expenses ?? []).map(toReviewRow));
+      setTicketEntryDate(initialHeader.entryDate);
+      setTicketStoreId(initialHeader.storeId);
+      setTicketPaymentInstrumentId(initialHeader.paymentInstrumentId);
+      setRows(applyTicketHeaderToRows(initialRows, initialHeader));
       setFeedback(ticket.error_message ?? null);
 
       const { data: signedUrlData } = await supabase.storage.from('tickets').createSignedUrl(ticket.storage_path, 3600);
@@ -378,21 +409,29 @@ export function TicketScanPage() {
   const unitNameById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
   const storeNameById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const paymentNameById = useMemo(() => new Map(paymentInstruments.map((instrument) => [instrument.id, instrument.name])), [paymentInstruments]);
+  const ticketHeader = useMemo(
+    () => ({
+      entryDate: ticketEntryDate,
+      storeId: ticketStoreId,
+      paymentInstrumentId: ticketPaymentInstrumentId,
+    }),
+    [ticketEntryDate, ticketPaymentInstrumentId, ticketStoreId],
+  );
   const purchaseDateLabel = useMemo(() => {
-    const purchaseDate = rows.find((row) => row.entryDate)?.entryDate;
+    const purchaseDate = ticketHeader.entryDate;
 
     return purchaseDate ? formatPurchaseDate(purchaseDate) : 'Sin fecha';
-  }, [rows]);
+  }, [ticketHeader.entryDate]);
   const storeLabel = useMemo(() => {
-    const storeId = rows.find((row) => row.storeId)?.storeId;
+    const storeId = ticketHeader.storeId;
 
     return storeId ? storeNameById.get(storeId) ?? 'Sin tienda' : 'Sin tienda';
-  }, [rows, storeNameById]);
+  }, [storeNameById, ticketHeader.storeId]);
   const paymentLabel = useMemo(() => {
-    const paymentInstrumentId = rows.find((row) => row.paymentInstrumentId)?.paymentInstrumentId;
+    const paymentInstrumentId = ticketHeader.paymentInstrumentId;
 
     return paymentInstrumentId ? paymentNameById.get(paymentInstrumentId) ?? 'Sin pago' : 'Sin pago';
-  }, [paymentNameById, rows]);
+  }, [paymentNameById, ticketHeader.paymentInstrumentId]);
   const ticketTotalLabel = useMemo(() => {
     const totalAmount = rows.reduce((sum, row) => {
       const rowTotal = Number(row.totalAmountMxn);
@@ -406,42 +445,87 @@ export function TicketScanPage() {
       maximumFractionDigits: 2,
     }).format(totalAmount);
   }, [rows]);
-  const sharedEntryDate = useMemo(() => getSharedFieldState(rows.map((row) => row.entryDate)), [rows]);
-  const sharedStoreId = useMemo(() => getSharedFieldState(rows.map((row) => row.storeId)), [rows]);
-  const sharedPaymentInstrumentId = useMemo(
-    () => getSharedFieldState(rows.map((row) => row.paymentInstrumentId)),
-    [rows],
-  );
-  const sharedStoreOptions = useMemo<readonly SelectOption[]>(
-    () => (sharedStoreId.isMixed ? [{ value: '', label: 'Mixta' }, ...storeOptions] : storeOptions),
-    [sharedStoreId.isMixed, storeOptions],
-  );
-  const sharedPaymentOptions = useMemo<readonly SelectOption[]>(
-    () => (sharedPaymentInstrumentId.isMixed ? [{ value: '', label: 'Mixto' }, ...paymentInstrumentOptions] : paymentInstrumentOptions),
-    [paymentInstrumentOptions, sharedPaymentInstrumentId.isMixed],
-  );
   const canSelectImage = !previewUrl && !currentTicketId && !isProcessing && !isSaving && !isCatalogsLoading;
   const canRetryProcessing = Boolean(currentStoragePath && currentTicketStatus === 'error' && !isProcessing && !isSaving);
   const canAddProduct = Boolean(currentTicketId && !isProcessing && !isSaving && currentTicketStatus !== 'saved');
+  const isReviewEditable = currentTicketStatus !== 'saved' && !isProcessing && !isSaving;
+  const isTicketHeaderEditable = Boolean(currentTicketId && isReviewEditable);
 
-  function applySharedField<K extends 'entryDate' | 'storeId' | 'paymentInstrumentId'>(field: K, value: ReviewRow[K]) {
-    setRows((currentRows) => currentRows.map((row) => ({ ...row, [field]: value })));
+  function setTicketHeaderState(header: TicketHeaderState) {
+    setTicketEntryDate(header.entryDate);
+    setTicketStoreId(header.storeId);
+    setTicketPaymentInstrumentId(header.paymentInstrumentId);
+  }
+
+  async function persistTicketHeader(header: TicketHeaderState, failurePrefix = 'No fue posible actualizar la cabecera del ticket.') {
+    if (!supabase || !currentTicketId) {
+      return true;
+    }
+
+    const { error } = await supabase
+      .from('tickets')
+      .update({
+        entry_date: header.entryDate || null,
+        store_id: header.storeId || null,
+        payment_instrument_id: header.paymentInstrumentId || null,
+      })
+      .eq('id', currentTicketId);
+
+    if (error) {
+      setFeedback(`${failurePrefix} ${error.message}`);
+      return false;
+    }
+
+    return true;
+  }
+
+  function handleTicketHeaderChange<K extends keyof TicketHeaderState>(field: K, value: TicketHeaderState[K]) {
+    const nextHeader = {
+      ...ticketHeader,
+      [field]: value,
+    };
+
+    setTicketHeaderState(nextHeader);
+    setRows((currentRows) => applyTicketHeaderToRows(currentRows, nextHeader));
+
+    if (currentTicketId && currentTicketStatus !== 'saved') {
+      void persistTicketHeader(nextHeader);
+    }
+  }
+
+  function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
+    const cellId = `${rowIdx}:${columnKey}`;
+
+    if (autoEditCellRef.current === cellId) {
+      return;
+    }
+
+    autoEditCellRef.current = cellId;
+
+    window.setTimeout(() => {
+      gridRef.current?.selectCell({ rowIdx, idx: columnIdx }, { enableEditor: true, shouldFocusCell: true });
+
+      window.setTimeout(() => {
+        if (autoEditCellRef.current === cellId) {
+          autoEditCellRef.current = null;
+        }
+      }, 0);
+    }, 0);
   }
 
   function handleAddProduct() {
-    const fallbackRow = rows[0];
+    const nextRow = createEmptyReviewRow({
+      entryDate: ticketHeader.entryDate || getTodayDate(),
+      storeId: ticketHeader.storeId,
+      paymentInstrumentId: ticketHeader.paymentInstrumentId,
+      currencyCode: rows[0]?.currencyCode ?? 'MXN',
+    });
 
     setRows((currentRows) => [
+      nextRow,
       ...currentRows,
-      createEmptyReviewRow({
-        entryDate: sharedEntryDate.isMixed ? fallbackRow?.entryDate ?? getTodayDate() : sharedEntryDate.value || getTodayDate(),
-        storeId: sharedStoreId.isMixed ? fallbackRow?.storeId ?? '' : sharedStoreId.value,
-        paymentInstrumentId: sharedPaymentInstrumentId.isMixed
-          ? fallbackRow?.paymentInstrumentId ?? ''
-          : sharedPaymentInstrumentId.value,
-        currencyCode: fallbackRow?.currencyCode ?? 'MXN',
-      }),
     ]);
+    focusCellEditor(0, 0, 'concept');
     setFeedback('Producto añadido.');
   }
 
@@ -463,7 +547,16 @@ export function TicketScanPage() {
     setCurrentTicketId(data.ticket_id as string);
     setCurrentTicketStatus('processed');
     setCurrentStoragePath(storagePath);
-    setRows(((data.parsed_expenses ?? []) as ParsedTicketExpense[]).map(toReviewRow));
+    const parsedRows = ((data.parsed_expenses ?? []) as ParsedTicketExpense[]).map(toReviewRow);
+    const fallbackHeader = getTicketHeaderFromRows(parsedRows);
+    const nextHeader = {
+      entryDate: (data.entry_date as string | null) ?? fallbackHeader.entryDate,
+      storeId: (data.store_id as string | null) ?? fallbackHeader.storeId,
+      paymentInstrumentId: (data.payment_instrument_id as string | null) ?? fallbackHeader.paymentInstrumentId,
+    };
+
+    setTicketHeaderState(nextHeader);
+    setRows(applyTicketHeaderToRows(parsedRows, nextHeader));
     setFeedback('Ticket procesado.');
   }
 
@@ -574,12 +667,25 @@ export function TicketScanPage() {
     setIsSaving(true);
     setFeedback(null);
 
+    if (!ticketHeader.entryDate || !isIsoDateString(ticketHeader.entryDate)) {
+      setFeedback('La cabecera del ticket necesita una fecha válida.');
+      setIsSaving(false);
+      return;
+    }
+
+    const headerSaved = await persistTicketHeader(ticketHeader, 'No fue posible actualizar la cabecera del ticket antes de guardar.');
+
+    if (!headerSaved) {
+      setIsSaving(false);
+      return;
+    }
+
     const payload = rows.map((row) => {
       const subtotalOriginal = Number(row.subtotalOriginal);
       const fxRateToMxn = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
 
       return {
-        entry_date: row.entryDate,
+        entry_date: ticketHeader.entryDate,
         concept: row.concept.trim(),
         quantity: Number(row.quantity),
         unit_of_measure: unitNameById.get(row.unitOfMeasureId) ?? null,
@@ -588,8 +694,8 @@ export function TicketScanPage() {
         currency_code: row.currencyCode,
         fx_rate_to_mxn: row.currencyCode === 'MXN' ? null : fxRateToMxn,
         total_amount_mxn: Number((subtotalOriginal * fxRateToMxn).toFixed(6)),
-        payment_instrument_id: row.paymentInstrumentId || null,
-        store_id: row.storeId || null,
+        payment_instrument_id: ticketHeader.paymentInstrumentId || null,
+        store_id: ticketHeader.storeId || null,
         category_id: row.categoryId || null,
         ticket_url: currentTicketId,
         notes: row.notes.trim() || null,
@@ -634,18 +740,21 @@ export function TicketScanPage() {
         key: 'concept',
         name: 'Concepto',
         width: 220,
+        editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="text" />,
       },
       {
         key: 'quantity',
         name: 'Cantidad',
         width: 82,
+        editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" />,
       },
       {
         key: 'unitOfMeasureId',
         name: 'Unidad',
         width: 110,
+        editable: isReviewEditable,
         renderCell: ({ row }) => unitOptions.find((option) => option.value === row.unitOfMeasureId)?.label ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={unitOptions} />,
       },
@@ -653,6 +762,7 @@ export function TicketScanPage() {
         key: 'categoryId',
         name: 'Categoría',
         width: 130,
+        editable: isReviewEditable,
         renderCell: ({ row }) => categoryOptions.find((option) => option.value === row.categoryId)?.label ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
@@ -660,18 +770,21 @@ export function TicketScanPage() {
         key: 'currencyCode',
         name: 'Moneda',
         width: 88,
+        editable: isReviewEditable,
         renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'subtotalOriginal',
         name: 'Subtotal',
         width: 96,
+        editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.01" />,
       },
       {
         key: 'fxRateToMxn',
         name: 'FX',
         width: 90,
+        editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" />,
       },
       {
@@ -684,10 +797,11 @@ export function TicketScanPage() {
         key: 'notes',
         name: 'Notas',
         width: 180,
+        editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="text" />,
       },
     ],
-    [categoryOptions, currencyOptions, unitOptions],
+    [categoryOptions, currencyOptions, isReviewEditable, unitOptions],
   );
 
   return (
@@ -850,11 +964,6 @@ export function TicketScanPage() {
             </div>
           ) : (
             <>
-              <div className="badge-row">
-                <span className="badge">{rows.length} filas</span>
-                {currentTicketStatus === 'saved' ? <span className="badge">Guardado</span> : null}
-              </div>
-
               <div className="finance-form tickets-bulk-fields">
                 <div className="tickets-bulk-fields__field">
                   <span className="tickets-bulk-fields__label" title="Fecha común">
@@ -863,9 +972,10 @@ export function TicketScanPage() {
                   <AppDatePicker
                     className="dashboard-filters__control tickets-bulk-fields__control"
                     ariaLabel="Fecha común"
-                    value={sharedEntryDate.value}
-                    onChange={(value) => applySharedField('entryDate', value)}
-                    placeholder={sharedEntryDate.isMixed ? 'Mixta' : 'AAAA-MM-DD'}
+                    value={ticketHeader.entryDate}
+                    onChange={(value) => handleTicketHeaderChange('entryDate', value)}
+                    placeholder="AAAA-MM-DD"
+                    disabled={!isTicketHeaderEditable}
                   />
                 </div>
 
@@ -875,10 +985,11 @@ export function TicketScanPage() {
                   </span>
                   <AppSelect
                     ariaLabel="Tienda común"
-                    options={sharedStoreOptions}
-                    value={sharedStoreId.value}
-                    onChange={(value) => applySharedField('storeId', value)}
-                    placeholder={sharedStoreId.isMixed ? 'Mixta' : 'Tienda'}
+                    options={storeOptions}
+                    value={ticketHeader.storeId}
+                    onChange={(value) => handleTicketHeaderChange('storeId', value)}
+                    placeholder="Tienda"
+                    isDisabled={!isTicketHeaderEditable}
                   />
                 </div>
 
@@ -888,24 +999,32 @@ export function TicketScanPage() {
                   </span>
                   <AppSelect
                     ariaLabel="Pago común"
-                    options={sharedPaymentOptions}
-                    value={sharedPaymentInstrumentId.value}
-                    onChange={(value) => applySharedField('paymentInstrumentId', value)}
-                    placeholder={sharedPaymentInstrumentId.isMixed ? 'Mixto' : 'Pago'}
+                    options={paymentInstrumentOptions}
+                    value={ticketHeader.paymentInstrumentId}
+                    onChange={(value) => handleTicketHeaderChange('paymentInstrumentId', value)}
+                    placeholder="Pago"
+                    isDisabled={!isTicketHeaderEditable}
                   />
                 </div>
               </div>
 
               <div className="grid-wrapper grid-wrapper--tall">
                 <DataGrid
+                  ref={gridRef}
                   columns={columns}
                   rows={rows}
                   rowHeight={GRID_ROW_HEIGHT}
                   headerRowHeight={GRID_ROW_HEIGHT}
                   rowKeyGetter={(row) => row.id}
-                  onRowsChange={(nextRows) => setRows(nextRows.map(normalizeReviewRow))}
+                  onRowsChange={(nextRows) => {
+                    if (!isReviewEditable) {
+                      return;
+                    }
+
+                    setRows(nextRows.map(normalizeReviewRow));
+                  }}
                   onCellClick={(args) => {
-                    if (args.column.renderEditCell) {
+                    if (isReviewEditable && args.column.renderEditCell) {
                       args.selectCell(true);
                     }
                   }}

@@ -1,4 +1,4 @@
-# Finapp
+# Auna
 
 Proyecto inicial para una app de finanzas personales con React 19, TypeScript, Vite y Supabase.
 
@@ -85,7 +85,7 @@ En local, la confirmacion por correo esta desactivada, asi que el acceso es inme
 
 ## Documentacion operativa
 - despliegue completo de `staging` y `production`: [DEPLOY.md](DEPLOY.md)
-- plan funcional original: [plan-finapp.prompt.md](plan-finapp.prompt.md)
+- plan funcional original: [plan-auna.prompt.md](plan-auna.prompt.md)
 - arquitectura de tours guiados: [docs/guided-tours-architecture.md](docs/guided-tours-architecture.md)
 
 ## Supabase local

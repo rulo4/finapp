@@ -9,11 +9,11 @@ import { useAuth } from '../features/auth/AuthContext';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { usePageTour } from '../features/tours/usePageTour';
 
-const SIDEBAR_COLLAPSED_STORAGE_KEY = 'finapp.sidebar.collapsed';
+const SIDEBAR_COLLAPSED_STORAGE_KEY = 'auna.sidebar.collapsed';
 
 function getPageTitle(pathname: string) {
   const match = navigationItems.find((item) => pathname.startsWith(item.to));
-  return match?.label ?? 'Finapp';
+  return match?.label ?? 'Auna';
 }
 
 export function AppShell() {
@@ -72,10 +72,8 @@ export function AppShell() {
       <aside className={clsx('sidebar', isCompactShell && 'sidebar--compact', isSidebarIconOnly && 'sidebar--collapsed', isMobileNavOpen && 'sidebar--open')}>
         <div className="sidebar__brand">
           <div className="sidebar__brand-main">
-            <span className="sidebar__brand-mark" aria-hidden="true">
-              F
-            </span>
-            <h1 className="sidebar__title">Finapp</h1>
+            <img className="sidebar__brand-logo" src="/auna-icon-1.png" alt="Auna" />
+            <h1 className="sidebar__title">Auna</h1>
           </div>
           <div className="sidebar__brand-actions">
             {!isCompactShell ? (

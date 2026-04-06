@@ -1,4 +1,4 @@
-# Finapp – Copilot Instructions
+# Auna – Copilot Instructions
 
 ## Project Overview
 Personal finance web application for tracking income, expenses, investments, stock trades, and dividends. The UI language is **Spanish**. All user-facing labels, messages, and navigation items must be written in Spanish.
@@ -86,7 +86,7 @@ All pages are lazy-loaded via `React.lazy` + `<Suspense>`. Routes are nested ins
 - `clsx` is used to compose conditional class names.
 - `ENABLE_MOBILE_OPTIMIZED_LAYOUTS` in `src/config/ui.ts` is `false` by default; responsive sidebar uses this flag.
 - Ingresos, egresos y dashboard deben usar una sola experiencia responsive; no mantener formularios o flujos especiales solo para móvil.
-- Sidebar collapse state is persisted in `localStorage` under key `finapp.sidebar.collapsed`.
+- Sidebar collapse state is persisted in `localStorage` under key `auna.sidebar.collapsed`.
 - Usa el menor texto posible en la UI; prefiere iconos claros cuando el contexto del campo o la acción siga siendo obvio.
 - En acciones o columnas compactas, favorece icon-only buttons con `aria-label` y `title` en lugar de texto visible repetitivo.
 - Todo texto visible al usuario en español debe respetar ortografía, acentuación y puntuación correctas; no omitas tildes en labels, mensajes, ayudas ni tours.

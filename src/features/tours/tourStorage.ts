@@ -1,6 +1,6 @@
 export type PageTourKey = 'catalogs';
 
-const TOUR_STORAGE_PREFIX = 'finapp.tour.';
+const TOUR_STORAGE_PREFIX = 'auna.tour.';
 
 function getTourStorageKey(pageKey: PageTourKey, version: string) {
   return `${TOUR_STORAGE_PREFIX}${pageKey}.${version}`;

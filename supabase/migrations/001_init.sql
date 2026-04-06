@@ -1,4 +1,4 @@
--- Finapp initial schema draft
+-- Auna initial schema draft
 -- This migration intentionally creates only the foundational tables needed to start wiring the app.
 
 create extension if not exists pgcrypto;

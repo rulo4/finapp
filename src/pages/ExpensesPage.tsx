@@ -193,6 +193,14 @@ function createDraftExpenseRow(): ExpenseGridRow {
   };
 }
 
+function canEditExpenseColumn(row: ExpenseGridRow, columnKey: string) {
+  if (!row.ticketUrl) {
+    return true;
+  }
+
+  return columnKey !== 'entryDate' && columnKey !== 'paymentInstrumentId' && columnKey !== 'storeId';
+}
+
 function withExpenseDraftRow(rows: ExpenseGridRow[]) {
   const draftRow = rows.find((row) => row.isDraft) ?? createDraftExpenseRow();
 
@@ -1204,6 +1212,7 @@ export function ExpensesPage() {
         width: DATE_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderDateHeaderCell,
+        editable: (row) => canEditExpenseColumn(row, 'entryDate'),
         renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
@@ -1248,6 +1257,7 @@ export function ExpensesPage() {
         width: PAYMENT_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderPaymentInstrumentHeaderCell,
+        editable: (row) => canEditExpenseColumn(row, 'paymentInstrumentId'),
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
       },
@@ -1255,6 +1265,7 @@ export function ExpensesPage() {
         key: 'storeId',
         name: 'Tienda',
         width: STORE_COLUMN_WIDTH,
+        editable: (row) => canEditExpenseColumn(row, 'storeId'),
         renderCell: ({ row }) => storeLabelById.get(row.storeId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
       },
@@ -1434,12 +1445,12 @@ export function ExpensesPage() {
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
-              if (args.column.renderEditCell) {
+              if (args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
                 args.selectCell(true);
               }
             }}
             onSelectedCellChange={(args) => {
-              if (args.row && args.column.renderEditCell) {
+              if (args.row && args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
                 focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
               }
             }}

@@ -21,6 +21,9 @@ export type TicketRecord = {
   id: string;
   storage_path: string;
   status: TicketStatus;
+  entry_date: string | null;
+  store_id: string | null;
+  payment_instrument_id: string | null;
   raw_llm_response: unknown;
   parsed_expenses: ParsedTicketExpense[] | null;
   error_message: string | null;

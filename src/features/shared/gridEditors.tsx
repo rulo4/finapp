@@ -113,6 +113,7 @@ type AppSelectProps = {
   autoFocus?: boolean;
   instanceRef?: Ref<SelectInstance<SelectOption, false>>;
   compact?: boolean;
+  isDisabled?: boolean;
 };
 
 export function AppSelect({
@@ -126,6 +127,7 @@ export function AppSelect({
   autoFocus = false,
   instanceRef,
   compact = false,
+  isDisabled = false,
 }: AppSelectProps) {
   const inputId = useId();
   const selectedOption = useMemo(() => options.find((option) => option.value === value) ?? null, [options, value]);
@@ -142,6 +144,7 @@ export function AppSelect({
       onBlur={onBlur}
       placeholder={placeholder}
       isSearchable={isSearchable}
+      isDisabled={isDisabled}
       autoFocus={autoFocus}
       menuPortalTarget={typeof document === 'undefined' ? undefined : document.body}
       styles={compact ? compactSelectStyles : selectStyles}

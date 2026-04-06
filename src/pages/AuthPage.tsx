@@ -3,6 +3,16 @@ import { getSupabaseConfig, supabase } from '../lib/supabase/client';
 
 type AuthPageMode = 'auth' | 'loading' | 'config-error';
 
+function AuthHeader({ title }: { title: string }) {
+  return (
+    <div className="auth-card__header">
+      <img className="auth-card__logo" src="/auna-icon-1.png" alt="Auna" />
+      <span className="auth-card__eyebrow">Auna</span>
+      <h1 className="sidebar__title">{title}</h1>
+    </div>
+  );
+}
+
 export function AuthPage({ mode }: { mode: AuthPageMode }) {
   const [variant, setVariant] = useState<'sign-in' | 'sign-up'>('sign-in');
   const [email, setEmail] = useState('');
@@ -15,10 +25,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     return (
       <div className="auth-shell">
         <section className="auth-card">
-          <div className="auth-card__header">
-            <span className="auth-card__eyebrow">Finapp</span>
-            <h1 className="sidebar__title">Cargando</h1>
-          </div>
+          <AuthHeader title="Cargando" />
         </section>
       </div>
     );
@@ -28,10 +35,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
     return (
       <div className="auth-shell">
         <section className="auth-card">
-          <div className="auth-card__header">
-            <span className="auth-card__eyebrow">Finapp</span>
-            <h1 className="sidebar__title">Config faltante</h1>
-          </div>
+          <AuthHeader title="Config faltante" />
           <div className="status-list">
             <div className="status-row">
               <span className="status-row__label">Project URL</span>
@@ -85,10 +89,7 @@ export function AuthPage({ mode }: { mode: AuthPageMode }) {
   return (
     <div className="auth-shell">
       <section className="auth-card">
-        <div className="auth-card__header">
-          <span className="auth-card__eyebrow">Finapp</span>
-          <h1 className="sidebar__title">{variant === 'sign-in' ? 'Entrar' : 'Crear cuenta'}</h1>
-        </div>
+        <AuthHeader title={variant === 'sign-in' ? 'Entrar' : 'Crear cuenta'} />
 
         <form className="auth-form" onSubmit={handleSubmit}>
           <label className="auth-field">

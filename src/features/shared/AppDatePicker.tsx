@@ -16,6 +16,7 @@ type AppDatePickerProps = {
   autoFocus?: boolean;
   min?: string;
   max?: string;
+  disabled?: boolean;
 };
 
 function toDate(value: string) {
@@ -64,6 +65,7 @@ export function AppDatePicker({
   autoFocus = false,
   min,
   max,
+  disabled = false,
 }: AppDatePickerProps) {
   const selectedDate = useMemo(() => toDate(value), [value]);
   const minDate = useMemo(() => toDate(min ?? ''), [min]);
@@ -161,12 +163,13 @@ export function AppDatePicker({
       autoFocus={autoFocus}
       minDate={minDate ?? undefined}
       maxDate={maxDate ?? undefined}
+      disabled={disabled}
       locale={es}
       renderCustomHeader={renderHeader}
       portalId="root"
       popperPlacement="bottom-start"
       showPopperArrow={false}
-      customInput={<DateInput className={className} aria-label={ariaLabel} />}
+      customInput={<DateInput className={className} aria-label={ariaLabel} disabled={disabled} />}
       calendarClassName="app-date-picker__calendar"
       calendarStartDay={1}
     />
