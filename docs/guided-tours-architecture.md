@@ -64,7 +64,7 @@ Responsabilidades:
 - `tourRegistry.ts`: declara los tours por página y sus pasos.
 - `tourStorage.ts`: encapsula llaves y helpers de `localStorage` para recordar tours vistos.
 - `usePageTour.ts`: expone una interfaz mínima para la página actual, por ejemplo iniciar el tour o decidir si se muestra automáticamente.
-- `tour.css`: contiene el tema visual del tour alineado al estilo de Finapp.
+- `tour.css`: contiene el tema visual del tour alineado al estilo de Auna.
 
 ## Punto de entrada
 
@@ -162,13 +162,13 @@ El estado de tours vistos debe guardarse en `localStorage` mediante una capa ded
 
 Convenciones sugeridas:
 
-- prefijo común: `finapp.tour.`
+- prefijo común: `auna.tour.`
 - una llave por página o por versión del tour
 
 Ejemplos:
 
-- `finapp.tour.dashboard.v1`
-- `finapp.tour.expenses.v1`
+- `auna.tour.dashboard.v1`
+- `auna.tour.expenses.v1`
 
 Si cambia materialmente el contenido del tour, debe incrementarse la versión de la llave.
 
