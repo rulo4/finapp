@@ -92,6 +92,14 @@ function normalizeString(value: string | undefined) {
   return trimmed ? trimmed : null;
 }
 
+function normalizeUuid(value: string | undefined) {
+  const normalizedValue = normalizeString(value);
+
+  return normalizedValue && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(normalizedValue)
+    ? normalizedValue
+    : null;
+}
+
 function normalizeMatchText(value: string | null | undefined) {
   return (value ?? '')
     .normalize('NFD')
@@ -103,6 +111,35 @@ function normalizeMatchText(value: string | null | undefined) {
 
 function normalizeCurrency(value: string | undefined): 'MXN' | 'USD' {
   return value === 'USD' ? 'USD' : 'MXN';
+}
+
+type NormalizedTicketContext = {
+  entryDate: string;
+  currencyCode: 'MXN' | 'USD';
+  storeId: string | null;
+  storeText: string | null;
+  paymentInstrumentId: string | null;
+  paymentInstrumentText: string | null;
+};
+
+function normalizeTicketContext(
+  payload: GeminiReceiptResponse,
+  stores: CatalogOption[],
+  paymentInstruments: PaymentInstrumentOption[],
+): NormalizedTicketContext {
+  const entryDate = isIsoDate(payload.receipt_date) ? payload.receipt_date! : new Date().toISOString().slice(0, 10);
+  const currencyCode = normalizeCurrency(payload.currency_code);
+  const resolvedStore = resolveCatalogOptionByName(payload.store_name_text, stores);
+  const resolvedPaymentInstrument = resolveCatalogOptionByName(payload.payment_instrument_text, paymentInstruments);
+
+  return {
+    entryDate,
+    currencyCode,
+    storeId: normalizeUuid(payload.store_id) ?? resolvedStore?.id ?? null,
+    storeText: normalizeString(payload.store_name_text) ?? resolvedStore?.name ?? null,
+    paymentInstrumentId: normalizeUuid(payload.payment_instrument_id) ?? resolvedPaymentInstrument?.id ?? null,
+    paymentInstrumentText: normalizeString(payload.payment_instrument_text) ?? resolvedPaymentInstrument?.name ?? null,
+  };
 }
 
 function normalizeQuantity(value: number | undefined) {
@@ -373,14 +410,7 @@ function normalizeParsedExpenses(
   units: CatalogOption[],
   paymentInstruments: PaymentInstrumentOption[],
 ): ParsedTicketExpense[] {
-  const entryDate = isIsoDate(payload.receipt_date) ? payload.receipt_date! : new Date().toISOString().slice(0, 10);
-  const currencyCode = normalizeCurrency(payload.currency_code);
-  const resolvedStore = resolveCatalogOptionByName(payload.store_name_text, stores);
-  const resolvedPaymentInstrument = resolveCatalogOptionByName(payload.payment_instrument_text, paymentInstruments);
-  const suggestedStoreId = normalizeString(payload.store_id) ?? resolvedStore?.id ?? null;
-  const suggestedStoreText = normalizeString(payload.store_name_text) ?? resolvedStore?.name ?? null;
-  const suggestedPaymentInstrumentId = normalizeString(payload.payment_instrument_id) ?? resolvedPaymentInstrument?.id ?? null;
-  const suggestedPaymentInstrumentText = normalizeString(payload.payment_instrument_text) ?? resolvedPaymentInstrument?.name ?? null;
+  const ticketContext = normalizeTicketContext(payload, stores, paymentInstruments);
 
   return (payload.items ?? [])
     .map((item) => {
@@ -400,17 +430,17 @@ function normalizeParsedExpenses(
       const subtotalOriginal = isDiscount && normalizedSubtotal > 0 ? Number((-normalizedSubtotal).toFixed(6)) : normalizedSubtotal;
 
       return {
-        entry_date: entryDate,
+        entry_date: ticketContext.entryDate,
         concept,
         quantity,
         unit_of_measure_id: resolvedUnit?.id ?? null,
         unit_of_measure_text: resolvedUnit?.name ?? normalizeString(item.unit_of_measure_text) ?? inferredMeasure?.unitName ?? (!isDiscount ? 'pieza' : null),
         subtotal_original: subtotalOriginal,
-        currency_code: currencyCode,
-        suggested_store_id: suggestedStoreId,
-        suggested_store_text: suggestedStoreText,
-        suggested_payment_instrument_id: suggestedPaymentInstrumentId,
-        suggested_payment_instrument_text: suggestedPaymentInstrumentText,
+        currency_code: ticketContext.currencyCode,
+        suggested_store_id: ticketContext.storeId,
+        suggested_store_text: ticketContext.storeText,
+        suggested_payment_instrument_id: ticketContext.paymentInstrumentId,
+        suggested_payment_instrument_text: ticketContext.paymentInstrumentText,
         suggested_category_id: normalizeString(item.category_id) ?? resolvedCategory?.id ?? null,
         suggested_category_text: normalizeString(item.category_text) ?? resolvedCategory?.name ?? null,
         notes: item.notes?.trim() ?? '',
@@ -498,6 +528,9 @@ Deno.serve(async (request: Request) => {
         .from('tickets')
         .update({
           status: 'processing',
+          entry_date: null,
+          store_id: null,
+          payment_instrument_id: null,
           raw_llm_response: null,
           parsed_expenses: null,
           error_message: null,
@@ -599,6 +632,11 @@ Deno.serve(async (request: Request) => {
       }
 
       const parsedGeminiPayload = parseGeminiJson(rawGeminiResponse);
+      const ticketContext = normalizeTicketContext(
+        parsedGeminiPayload,
+        (stores ?? []) as CatalogOption[],
+        (paymentInstruments ?? []) as PaymentInstrumentOption[],
+      );
       const parsedExpenses = normalizeParsedExpenses(
         parsedGeminiPayload,
         (stores ?? []) as CatalogOption[],
@@ -611,6 +649,9 @@ Deno.serve(async (request: Request) => {
         .from('tickets')
         .update({
           status: 'processed',
+          entry_date: ticketContext.entryDate,
+          store_id: ticketContext.storeId,
+          payment_instrument_id: ticketContext.paymentInstrumentId,
           raw_llm_response: rawGeminiResponse,
           parsed_expenses: parsedExpenses,
           error_message: null,
@@ -624,6 +665,9 @@ Deno.serve(async (request: Request) => {
 
       return jsonResponse(200, {
         ticket_id: ticketId,
+        entry_date: ticketContext.entryDate,
+        store_id: ticketContext.storeId,
+        payment_instrument_id: ticketContext.paymentInstrumentId,
         parsed_expenses: parsedExpenses,
       });
     } catch (processingError) {

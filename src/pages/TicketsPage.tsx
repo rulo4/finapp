@@ -6,6 +6,16 @@ import { Link } from 'react-router-dom';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 import type { TicketRecord, TicketStatus } from '../features/tickets/types';
 
+type Store = {
+  id: string;
+  name: string;
+};
+
+type PaymentInstrument = {
+  id: string;
+  name: string;
+};
+
 type TicketGridRow = TicketRecord & {
   previewUrl: string | null;
   purchaseDateLabel: string;
@@ -53,16 +63,24 @@ function formatPurchaseDate(value: string) {
 }
 
 function getTicketPurchaseDate(ticket: TicketRecord) {
-  const purchaseDate = ticket.parsed_expenses?.find((expense) => expense.entry_date)?.entry_date;
+  const purchaseDate = ticket.entry_date ?? ticket.parsed_expenses?.find((expense) => expense.entry_date)?.entry_date;
 
   return purchaseDate ? formatPurchaseDate(purchaseDate) : 'Sin fecha';
 }
 
-function getTicketStore(ticket: TicketRecord) {
+function getTicketStore(ticket: TicketRecord, storeNameById: Map<string, string>) {
+  if (ticket.store_id) {
+    return storeNameById.get(ticket.store_id) ?? 'Sin tienda';
+  }
+
   return ticket.parsed_expenses?.find((expense) => expense.suggested_store_text?.trim())?.suggested_store_text?.trim() ?? 'Sin tienda';
 }
 
-function getTicketPaymentInstrument(ticket: TicketRecord) {
+function getTicketPaymentInstrument(ticket: TicketRecord, paymentNameById: Map<string, string>) {
+  if (ticket.payment_instrument_id) {
+    return paymentNameById.get(ticket.payment_instrument_id) ?? 'Sin pago';
+  }
+
   return (
     ticket.parsed_expenses
       ?.find((expense) => expense.suggested_payment_instrument_text?.trim())
@@ -125,19 +143,29 @@ export function TicketsPage() {
     setIsLoading(true);
     setFeedback(null);
 
-    const { data, error } = await activeSupabase
-      .from('tickets')
-      .select('id, storage_path, status, raw_llm_response, parsed_expenses, error_message, created_at')
-      .order('created_at', { ascending: false });
+    const [ticketsResult, storesResult, paymentInstrumentsResult] = await Promise.all([
+      activeSupabase
+        .from('tickets')
+        .select('id, storage_path, status, entry_date, store_id, payment_instrument_id, raw_llm_response, parsed_expenses, error_message, created_at')
+        .order('created_at', { ascending: false }),
+      activeSupabase.from('stores').select('id, name').eq('is_active', true).order('name'),
+      activeSupabase.from('payment_instruments').select('id, name').eq('is_active', true).order('name'),
+    ]);
 
-    if (error) {
+    const firstError = ticketsResult.error || storesResult.error || paymentInstrumentsResult.error;
+
+    if (firstError) {
       setTickets([]);
-      setFeedback(`No fue posible cargar el historial de tickets: ${error.message}`);
+      setFeedback(`No fue posible cargar el historial de tickets: ${firstError.message}`);
       setIsLoading(false);
       return;
     }
 
-    const records = (data ?? []) as TicketRecord[];
+    const records = (ticketsResult.data ?? []) as TicketRecord[];
+    const storeNameById = new Map(((storesResult.data ?? []) as Store[]).map((store) => [store.id, store.name]));
+    const paymentNameById = new Map(
+      ((paymentInstrumentsResult.data ?? []) as PaymentInstrument[]).map((instrument) => [instrument.id, instrument.name]),
+    );
     const signedUrls = await Promise.all(
       records.map(async (ticket) => {
         const { data: signedUrlData } = await activeSupabase.storage.from('tickets').createSignedUrl(ticket.storage_path, 3600);
@@ -155,8 +183,8 @@ export function TicketsPage() {
         ...ticket,
         previewUrl: previewById.get(ticket.id) ?? null,
         purchaseDateLabel: getTicketPurchaseDate(ticket),
-        storeLabel: getTicketStore(ticket),
-        paymentLabel: getTicketPaymentInstrument(ticket),
+        storeLabel: getTicketStore(ticket, storeNameById),
+        paymentLabel: getTicketPaymentInstrument(ticket, paymentNameById),
         expenseCount: ticket.parsed_expenses?.length ?? 0,
       })),
     );
