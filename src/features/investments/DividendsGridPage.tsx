@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../shared/gridEditors';
+import {
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../shared/gridEditors';
 import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
@@ -85,16 +91,17 @@ function withDraftRow(rows: DividendGridRow[]) {
 }
 
 function normalizeDividendGridRow(row: DividendGridRow): DividendGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const gross = Number(row.grossAmountOriginal);
-  const tax = Number(row.taxWithheldOriginal || '0');
+  const nextRow = autoSwitchCurrencyFromFx(row);
+  const fxRateToMxn = nextRow.currencyCode === 'MXN' ? '1' : nextRow.fxRateToMxn;
+  const gross = Number(nextRow.grossAmountOriginal);
+  const tax = Number(nextRow.taxWithheldOriginal || '0');
   const fxRate = Number(fxRateToMxn);
   const netOriginal = gross - tax;
 
   return {
-    ...row,
+    ...nextRow,
     fxRateToMxn,
-    taxWithheldOriginal: row.taxWithheldOriginal.trim() ? row.taxWithheldOriginal : '0',
+    taxWithheldOriginal: nextRow.taxWithheldOriginal.trim() ? nextRow.taxWithheldOriginal : '0',
     netAmountMxn:
       Number.isFinite(netOriginal) && netOriginal >= 0 && Number.isFinite(fxRate) && fxRate > 0
         ? formatEditableNumber(Number((netOriginal * fxRate).toFixed(6)))
@@ -286,6 +293,7 @@ export function DividendsGridPage() {
     }
 
     const normalizedRow = normalizeDividendGridRow(nextRows[rowIndex]);
+    const autoSwitchedCurrency = nextRows[rowIndex].currencyCode === 'MXN' && normalizedRow.currencyCode === 'USD';
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftDividendRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateDividendRow(normalizedRow) : null;
     const updatedRows: DividendGridRow[] = nextRows.map((row, index) => {
@@ -302,6 +310,10 @@ export function DividendsGridPage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
+
+    if (autoSwitchedCurrency) {
+      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+    }
   }
 
   const persistRow = useCallback(async (rowId: string) => {

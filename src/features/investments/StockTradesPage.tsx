@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../shared/gridEditors';
+import {
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../shared/gridEditors';
 import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
@@ -513,11 +519,14 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     const unitPriceChanged = nextRows[rowIndex].unitPriceOriginal !== previousRow.unitPriceOriginal;
     const feesChanged = nextRows[rowIndex].feesOriginal !== previousRow.feesOriginal;
 
-    let nextEditedRow: TradeGridRow = nextRows[rowIndex];
+    const autoSwitchedFxRow = autoSwitchCurrencyFromFx(nextRows[rowIndex]);
+    const autoSwitchedCurrency = nextRows[rowIndex].currencyCode === 'MXN' && autoSwitchedFxRow.currencyCode === 'USD';
+
+    let nextEditedRow: TradeGridRow = autoSwitchedFxRow;
     if (currencyChanged) {
       nextEditedRow = {
         ...nextEditedRow,
-        fxRateToMxn: nextRows[rowIndex].currencyCode === 'MXN' ? '1' : previousRow.currencyCode === 'MXN' ? '' : nextRows[rowIndex].fxRateToMxn,
+        fxRateToMxn: nextEditedRow.currencyCode === 'MXN' ? '1' : autoSwitchedCurrency ? nextEditedRow.fxRateToMxn : previousRow.currencyCode === 'MXN' ? '' : nextEditedRow.fxRateToMxn,
       };
     }
 
@@ -553,6 +562,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
+
+    if (autoSwitchedCurrency) {
+      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+    }
   }
 
   const persistRow = useCallback(async (rowId: string) => {
@@ -1278,10 +1291,6 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
-              if (args.column.key === 'fxRateToMxn' && args.row.currencyCode === 'MXN') {
-                return;
-              }
-
               if (kind === 'sell' && !args.row.isDraft) {
                 return;
               }
@@ -1291,10 +1300,6 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
               }
             }}
             onSelectedCellChange={(args) => {
-              if (args.row && args.column.key === 'fxRateToMxn' && args.row.currencyCode === 'MXN') {
-                return;
-              }
-
               if (kind === 'sell' && args.row && !args.row.isDraft) {
                 return;
               }

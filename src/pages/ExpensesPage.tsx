@@ -4,7 +4,14 @@ import { faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faReceipt, faRotat
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
-import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import {
+  AppSelect,
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../features/shared/gridEditors';
 import {
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
@@ -89,6 +96,7 @@ type ExpenseTableFilters = {
   concept: string;
   categoryId: string;
   paymentInstrumentId: string;
+  storeId: string;
 };
 
 function pickRelation(relation: { name: string } | { name: string }[] | null) {
@@ -299,12 +307,13 @@ async function fetchAllExpenseEntries(activeDateRange: { start: string; end: str
 }
 
 function normalizeExpenseGridRow(row: ExpenseGridRow): ExpenseGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const parsedSubtotal = Number(row.subtotalOriginal);
+  const nextRow = autoSwitchCurrencyFromFx(row);
+  const fxRateToMxn = nextRow.currencyCode === 'MXN' ? '1' : nextRow.fxRateToMxn;
+  const parsedSubtotal = Number(nextRow.subtotalOriginal);
   const parsedFxRate = Number(fxRateToMxn);
 
   return {
-    ...row,
+    ...nextRow,
     fxRateToMxn,
     totalAmountMxn:
       Number.isFinite(parsedSubtotal) &&
@@ -541,6 +550,7 @@ export function ExpensesPage() {
     concept: '',
     categoryId: '',
     paymentInstrumentId: '',
+    storeId: '',
   });
   const [calculatorExpression, setCalculatorExpression] = useState('');
   const [calculatorCopyState, setCalculatorCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
@@ -669,6 +679,7 @@ export function ExpensesPage() {
     }
 
     const normalizedRow = normalizeExpenseGridRow(nextRows[rowIndex]);
+    const autoSwitchedCurrency = nextRows[rowIndex].currencyCode === 'MXN' && normalizedRow.currencyCode === 'USD';
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftExpenseRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateExpenseRow(normalizedRow) : null;
     const updatedRows: ExpenseGridRow[] = nextRows.map((row, index) => {
@@ -685,6 +696,10 @@ export function ExpensesPage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
+
+    if (autoSwitchedCurrency) {
+      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+    }
   }
 
   function updateExpenseRow(rowId: string, updates: Partial<ExpenseGridRow>) {
@@ -925,6 +940,10 @@ export function ExpensesPage() {
     () => [{ value: '', label: 'Todos' }, ...paymentInstruments.map((instrument) => ({ value: instrument.id, label: instrument.name }))],
     [paymentInstruments],
   );
+  const storeFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todas' }, ...stores.map((store) => ({ value: store.id, label: store.name }))],
+    [stores],
+  );
 
   const categoryLabelById = useMemo(() => new Map(categories.map((category) => [category.id, category.name])), [categories]);
   const paymentInstrumentLabelById = useMemo(
@@ -939,6 +958,7 @@ export function ExpensesPage() {
     const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
     const categoryIdFilter = tableFilters.categoryId.trim();
     const paymentInstrumentIdFilter = tableFilters.paymentInstrumentId.trim();
+    const storeIdFilter = tableFilters.storeId.trim();
     const filteredRows = rows.filter((row) => {
       if (row.isDraft) {
         return false;
@@ -960,6 +980,10 @@ export function ExpensesPage() {
         return false;
       }
 
+      if (storeIdFilter && row.storeId !== storeIdFilter) {
+        return false;
+      }
+
       return true;
     });
 
@@ -978,7 +1002,13 @@ export function ExpensesPage() {
       totalLabel: formatCurrencyTotal(totalAmount),
     };
   }, [visibleRows]);
-  const hasActiveTableFilters = Boolean(tableFilters.entryDate || tableFilters.concept || tableFilters.categoryId || tableFilters.paymentInstrumentId);
+  const hasActiveTableFilters = Boolean(
+    tableFilters.entryDate ||
+      tableFilters.concept ||
+      tableFilters.categoryId ||
+      tableFilters.paymentInstrumentId ||
+      tableFilters.storeId,
+  );
 
   function resetTableFilters() {
     setTableFilters({
@@ -986,6 +1016,7 @@ export function ExpensesPage() {
       concept: '',
       categoryId: '',
       paymentInstrumentId: '',
+      storeId: '',
     });
   }
 
@@ -1117,6 +1148,27 @@ export function ExpensesPage() {
             setTableFilters((currentFilters) => ({
               ...currentFilters,
               paymentInstrumentId: value,
+            }));
+          }}
+        />
+      </div>
+    );
+  }
+
+  function renderStoreHeaderCell(props: RenderHeaderCellProps<ExpenseGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Tienda</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar egresos por tienda"
+          options={storeFilterOptions}
+          value={tableFilters.storeId}
+          placeholder="Todas"
+          onChange={(value) => {
+            setTableFilters((currentFilters) => ({
+              ...currentFilters,
+              storeId: value,
             }));
           }}
         />
@@ -1265,6 +1317,8 @@ export function ExpensesPage() {
         key: 'storeId',
         name: 'Tienda',
         width: STORE_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderStoreHeaderCell,
         editable: (row) => canEditExpenseColumn(row, 'storeId'),
         renderCell: ({ row }) => storeLabelById.get(row.storeId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
@@ -1312,6 +1366,8 @@ export function ExpensesPage() {
       renderConceptHeaderCell,
       renderDateHeaderCell,
       renderPaymentInstrumentHeaderCell,
+      renderStoreHeaderCell,
+      storeFilterOptions,
       storeLabelById,
       storeOptions,
       tableFilters.categoryId,

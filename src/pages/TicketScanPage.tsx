@@ -4,7 +4,14 @@ import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowU
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../features/auth/AuthContext';
-import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import {
+  AppSelect,
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../features/shared/gridEditors';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
 import { getTodayIsoDate, isIsoDateString } from '../features/shared/isoDate';
 import type { ParsedTicketExpense, TicketRecord, TicketStatus } from '../features/tickets/types';
@@ -56,12 +63,13 @@ function formatEditableNumber(value: number | null | undefined) {
 }
 
 function normalizeReviewRow(row: ReviewRow): ReviewRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const subtotalOriginal = Number(row.subtotalOriginal);
+  const nextRow = autoSwitchCurrencyFromFx(row);
+  const fxRateToMxn = nextRow.currencyCode === 'MXN' ? '1' : nextRow.fxRateToMxn;
+  const subtotalOriginal = Number(nextRow.subtotalOriginal);
   const fxRate = Number(fxRateToMxn);
 
   return {
-    ...row,
+    ...nextRow,
     fxRateToMxn,
     totalAmountMxn:
       Number.isFinite(subtotalOriginal) && Number.isFinite(fxRate) && fxRate > 0
@@ -1021,7 +1029,14 @@ export function TicketScanPage() {
                       return;
                     }
 
-                    setRows(nextRows.map(normalizeReviewRow));
+                    const normalizedRows = nextRows.map(normalizeReviewRow);
+                    const autoSwitchedCurrency = nextRows.some((row, index) => row.currencyCode === 'MXN' && normalizedRows[index]?.currencyCode === 'USD');
+
+                    setRows(normalizedRows);
+
+                    if (autoSwitchedCurrency) {
+                      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+                    }
                   }}
                   onCellClick={(args) => {
                     if (isReviewEditable && args.column.renderEditCell) {
