@@ -2,7 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faLock, faLockOpen, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps, type SortColumn } from 'react-data-grid';
-import { AppSelect, InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import {
+  AppSelect,
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../features/shared/gridEditors';
 import { isIsoDateString } from '../features/shared/isoDate';
 import {
   commitActiveEditorAndRun,
@@ -174,12 +181,13 @@ function toInvestmentGridRow(row: InvestmentMovementRow): InvestmentGridRow {
 }
 
 function normalizeInvestmentGridRow(row: InvestmentGridRow): InvestmentGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
-  const amountOriginal = Number(row.amountOriginal);
+  const nextRow = autoSwitchCurrencyFromFx(row);
+  const fxRateToMxn = nextRow.currencyCode === 'MXN' ? '1' : nextRow.fxRateToMxn;
+  const amountOriginal = Number(nextRow.amountOriginal);
   const fxRate = Number(fxRateToMxn);
 
   return {
-    ...row,
+    ...nextRow,
     fxRateToMxn,
     amountMxn:
       Number.isFinite(amountOriginal) && amountOriginal !== 0 && Number.isFinite(fxRate) && fxRate > 0
@@ -368,6 +376,7 @@ export function InvestmentsPage() {
     }
 
     const normalizedRow = normalizeInvestmentGridRow(mergedRows[rowIndex]);
+    const autoSwitchedCurrency = mergedRows[rowIndex].currencyCode === 'MXN' && normalizedRow.currencyCode === 'USD';
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftInvestmentRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateInvestmentRow(normalizedRow) : null;
     const updatedRows: InvestmentGridRow[] = mergedRows.map((row, index) => {
@@ -384,6 +393,10 @@ export function InvestmentsPage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
+
+    if (autoSwitchedCurrency) {
+      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+    }
   }
 
   const persistRow = useCallback(async (rowId: string) => {

@@ -2,7 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
-import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import {
+  FX_AUTO_SWITCH_FEEDBACK,
+  InputCellEditor,
+  SelectCellEditor,
+  autoSwitchCurrencyFromFx,
+  type SelectOption,
+} from '../features/shared/gridEditors';
 import {
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
@@ -158,12 +164,13 @@ function toIncomeGridRow(entry: IncomeEntry): IncomeGridRow {
 }
 
 function normalizeIncomeGridRow(row: IncomeGridRow): IncomeGridRow {
-  const fxRateToMxn = row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn;
+  const nextRow = autoSwitchCurrencyFromFx(row);
+  const fxRateToMxn = nextRow.currencyCode === 'MXN' ? '1' : nextRow.fxRateToMxn;
   const parsedAmount = Number(row.amountOriginal);
   const parsedFxRate = Number(fxRateToMxn);
 
   return {
-    ...row,
+    ...nextRow,
     fxRateToMxn,
     amountMxn:
       Number.isFinite(parsedAmount) &&
@@ -368,6 +375,7 @@ export function IncomePage() {
     }
 
     const normalizedRow = normalizeIncomeGridRow(nextRows[rowIndex]);
+    const autoSwitchedCurrency = nextRows[rowIndex].currencyCode === 'MXN' && normalizedRow.currencyCode === 'USD';
     const shouldPersist = normalizedRow.isDraft ? canSaveDraftIncomeRow(normalizedRow) : true;
     const validationMessage = shouldPersist ? validateIncomeRow(normalizedRow) : null;
     const updatedRows: IncomeGridRow[] = nextRows.map((row, index) => {
@@ -384,6 +392,10 @@ export function IncomePage() {
 
     rowsRef.current = updatedRows;
     setRows(updatedRows);
+
+    if (autoSwitchedCurrency) {
+      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+    }
   }
 
   function updateIncomeRow(rowId: string, updates: Partial<IncomeGridRow>) {

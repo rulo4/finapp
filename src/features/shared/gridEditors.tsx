@@ -6,6 +6,37 @@ import { ISO_DATE_PLACEHOLDER } from './isoDate';
 
 type EditorRow = Record<string, unknown>;
 
+export type SupportedFxCurrencyCode = 'MXN' | 'USD';
+
+export const FX_AUTO_SWITCH_FEEDBACK = 'Moneda actualizada a USD al capturar un FX distinto de 1.';
+
+export function shouldAutoSwitchCurrencyFromFx(currencyCode: SupportedFxCurrencyCode, fxRateToMxn: string) {
+  if (currencyCode !== 'MXN') {
+    return false;
+  }
+
+  const normalizedFxRate = fxRateToMxn.trim();
+
+  if (!normalizedFxRate) {
+    return false;
+  }
+
+  const parsedFxRate = Number(normalizedFxRate);
+
+  return Number.isFinite(parsedFxRate) && parsedFxRate > 0 && parsedFxRate !== 1;
+}
+
+export function autoSwitchCurrencyFromFx<TRow extends { currencyCode: SupportedFxCurrencyCode; fxRateToMxn: string }>(row: TRow): TRow {
+  if (!shouldAutoSwitchCurrencyFromFx(row.currencyCode, row.fxRateToMxn)) {
+    return row;
+  }
+
+  return {
+    ...row,
+    currencyCode: 'USD',
+  };
+}
+
 export type SelectOption = {
   value: string;
   label: string;
