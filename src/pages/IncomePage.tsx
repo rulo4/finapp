@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import {
+  AppSelect,
   FX_AUTO_SWITCH_FEEDBACK,
   InputCellEditor,
   SelectCellEditor,
@@ -114,6 +115,7 @@ function createLocalId(prefix: string) {
 
 const DEFAULT_COLUMN_WIDTH = 108;
 const GRID_ROW_HEIGHT = 30;
+const FILTER_HEADER_ROW_HEIGHT = 64;
 
 function createDraftIncomeRow(defaultSourceId = ''): IncomeGridRow {
   return {
@@ -255,6 +257,7 @@ function validateIncomeRow(row: IncomeGridRow) {
 export function IncomePage() {
   const [sources, setSources] = useState<IncomeSource[]>([]);
   const [rows, setRows] = useState<IncomeGridRow[]>([]);
+  const [sourceFilterId, setSourceFilterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<IncomeDateFilterMode>('month');
@@ -605,6 +608,10 @@ export function IncomePage() {
     () => [{ value: '', label: 'Selecciona una fuente' }, ...sources.map((source) => ({ value: source.id, label: source.name }))],
     [sources],
   );
+  const sourceFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todas' }, ...sources.map((source) => ({ value: source.id, label: source.name }))],
+    [sources],
+  );
   const currencyOptions = useMemo<readonly SelectOption[]>(
     () => [
       { value: 'MXN', label: 'MXN' },
@@ -613,19 +620,46 @@ export function IncomePage() {
     [],
   );
   const sourceLabelById = useMemo(() => new Map(sources.map((source) => [source.id, source.name])), [sources]);
+  const visibleRows = useMemo(() => {
+    const draftRow = rows.find((row) => row.isDraft) ?? null;
+    const persistedRows = rows.filter((row) => !row.isDraft);
+
+    if (!sourceFilterId) {
+      return draftRow ? [draftRow, ...persistedRows] : persistedRows;
+    }
+
+    const filteredRows = persistedRows.filter((row) => row.sourceId === sourceFilterId);
+    return draftRow ? [draftRow, ...filteredRows] : filteredRows;
+  }, [rows, sourceFilterId]);
   const visibleIncomeSummary = useMemo(() => {
-    const visibleRows = rows.filter((row) => !row.isDraft);
-    const totalAmount = visibleRows.reduce((sum, row) => {
+    const persistedVisibleRows = visibleRows.filter((row) => !row.isDraft);
+    const totalAmount = persistedVisibleRows.reduce((sum, row) => {
       const rowTotal = Number(row.amountMxn);
 
       return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
     }, 0);
 
     return {
-      count: visibleRows.length,
+      count: persistedVisibleRows.length,
       totalLabel: formatCurrencyTotal(totalAmount),
     };
-  }, [rows]);
+  }, [visibleRows]);
+
+  function renderSourceHeaderCell(_props: RenderHeaderCellProps<IncomeGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Fuente</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar ingresos por fuente"
+          options={sourceFilterOptions}
+          value={sourceFilterId}
+          placeholder="Todas"
+          onChange={setSourceFilterId}
+        />
+      </div>
+    );
+  }
 
   const columns = useMemo<readonly Column<IncomeGridRow>[]>(
     () => [
@@ -702,6 +736,8 @@ export function IncomePage() {
         key: 'sourceId',
         name: 'Fuente',
         width: DEFAULT_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderSourceHeaderCell,
         renderCell: ({ row }) => sourceLabelById.get(row.sourceId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={sourceOptions} />,
       },
@@ -737,7 +773,7 @@ export function IncomePage() {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Detalle opcional" />,
       },
     ],
-    [currencyOptions, handleDeleteRow, handleRevertRow, persistIncomeRow, sourceLabelById, sourceOptions],
+    [currencyOptions, handleDeleteRow, handleRevertRow, persistIncomeRow, sourceFilterId, sourceFilterOptions, sourceLabelById, sourceOptions],
   );
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
@@ -818,9 +854,9 @@ export function IncomePage() {
           <DataGrid
             ref={gridRef}
             columns={columns}
-            rows={rows}
+            rows={visibleRows}
             rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
             rowKeyGetter={(row) => row.id}
             onRowsChange={handleRowsChange}
             onCellClick={(args) => {
