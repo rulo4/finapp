@@ -490,6 +490,18 @@ export function DashboardPage() {
   const snapshotEndDate = activePeriod.end || getTodayDate();
   const activeChartVariant = chartVariants[activeTab];
   const nextChartVariant = activeChartVariant === 'pie' ? 'bar' : 'pie';
+  const activeDashboardTab = dashboardTabs.find((tab) => {
+    const tabKey: DashboardTabKey =
+      tab.to === '/dashboard'
+        ? 'income'
+        : tab.to === '/dashboard/expenses'
+          ? 'expense'
+          : tab.to === '/dashboard/investments'
+            ? 'investment'
+            : 'security';
+
+    return tabKey === activeTab;
+  }) ?? dashboardTabs[0];
 
   useEffect(() => {
     if (dashboardTab && !(dashboardTab in DASHBOARD_TAB_BY_ROUTE_SEGMENT)) {
@@ -737,32 +749,40 @@ export function DashboardPage() {
             {isLoading ? <span className="dashboard-chart-switch__spinner" aria-hidden="true" /> : null}
           </button>
 
-          <div className="dashboard-tabs" role="tablist" aria-label="Seleccionar dashboard activo">
-            {dashboardTabs.map((tab) => {
-              const tabKey: DashboardTabKey =
-                tab.to === '/dashboard'
-                  ? 'income'
-                  : tab.to === '/dashboard/expenses'
-                    ? 'expense'
-                    : tab.to === '/dashboard/investments'
-                      ? 'investment'
-                      : 'security';
+          <div className="dashboard-tabs-wrap">
+            <div className="dashboard-tabs" role="tablist" aria-label="Seleccionar dashboard activo">
+              {dashboardTabs.map((tab) => {
+                const tabKey: DashboardTabKey =
+                  tab.to === '/dashboard'
+                    ? 'income'
+                    : tab.to === '/dashboard/expenses'
+                      ? 'expense'
+                      : tab.to === '/dashboard/investments'
+                        ? 'investment'
+                        : 'security';
+                const isActive = activeTab === tabKey;
 
-              return (
-                <NavLink
-                  key={tab.to}
-                  to={tab.to}
-                  end={tab.end ?? true}
-                  role="tab"
-                  aria-selected={activeTab === tabKey}
-                  className={({ isActive }) => `dashboard-tabs__button ${isActive ? 'dashboard-tabs__button--active' : ''}`}
-                  title={tab.label}
-                  aria-label={tab.label}
-                >
-                  {tab.label}
-                </NavLink>
-              );
-            })}
+                return (
+                  <NavLink
+                    key={tab.to}
+                    to={tab.to}
+                    end={tab.end ?? true}
+                    role="tab"
+                    aria-selected={isActive}
+                    className={`dashboard-tabs__button ${isActive ? 'dashboard-tabs__button--active' : ''}`}
+                    title={tab.label}
+                    aria-label={tab.label}
+                  >
+                    <FontAwesomeIcon icon={tab.icon} className="dashboard-tabs__icon" />
+                    {isActive ? <span className="dashboard-tabs__label">{tab.label}</span> : null}
+                  </NavLink>
+                );
+              })}
+            </div>
+
+            <div className="dashboard-tabs__current" aria-live="polite">
+              {activeDashboardTab.label}
+            </div>
           </div>
         </div>
 
