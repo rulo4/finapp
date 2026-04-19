@@ -3,7 +3,7 @@ import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faAnglesLeft, faAnglesRight, faBars, faCircleQuestion, faRightFromBracket } from '@fortawesome/free-solid-svg-icons';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import clsx from 'clsx';
-import { navigationItems } from '../config/navigation';
+import { getNavigationItemForPathname, sidebarNavigationItems } from '../config/navigation';
 import { ENABLE_MOBILE_OPTIMIZED_LAYOUTS } from '../config/ui';
 import { useAuth } from '../features/auth/AuthContext';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
@@ -12,7 +12,7 @@ import { usePageTour } from '../features/tours/usePageTour';
 const SIDEBAR_COLLAPSED_STORAGE_KEY = 'auna.sidebar.collapsed';
 
 function getPageTitle(pathname: string) {
-  const match = navigationItems.find((item) => pathname.startsWith(item.to));
+  const match = getNavigationItemForPathname(pathname);
   return match?.label ?? 'Auna';
 }
 
@@ -51,6 +51,7 @@ export function AppShell() {
   }, [isCompactShell]);
 
   const isSidebarIconOnly = !isCompactShell && isSidebarCollapsed;
+  const activeNavigationItem = getNavigationItemForPathname(location.pathname);
 
   return (
     <div
@@ -94,23 +95,49 @@ export function AppShell() {
         </div>
 
         <nav className="sidebar__nav">
-          {navigationItems.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              title={isSidebarIconOnly ? item.label : undefined}
-              aria-label={item.label}
-              onClick={() => {
-                if (isCompactShell) {
-                  setIsMobileNavOpen(false);
-                }
-              }}
-              className={({ isActive }) => clsx('sidebar__link', isActive && 'sidebar__link--active')}
-            >
-              <FontAwesomeIcon icon={item.icon} className="sidebar__link-icon" />
-              <span className="sidebar__link-label">{item.label}</span>
-            </NavLink>
-          ))}
+          {sidebarNavigationItems.map((item) => {
+            const tabs = !isSidebarIconOnly && activeNavigationItem?.to === item.to && item.tabs && item.tabs.length > 0 ? item.tabs : null;
+
+            return (
+              <div key={item.to} className="sidebar__group">
+                <NavLink
+                  to={item.to}
+                  title={isSidebarIconOnly ? item.label : undefined}
+                  aria-label={item.label}
+                  onClick={() => {
+                    if (isCompactShell) {
+                      setIsMobileNavOpen(false);
+                    }
+                  }}
+                  className={({ isActive }) => clsx('sidebar__link', isActive && 'sidebar__link--active')}
+                >
+                  <FontAwesomeIcon icon={item.icon} className="sidebar__link-icon" />
+                  <span className="sidebar__link-label">{item.label}</span>
+                </NavLink>
+
+                {tabs ? (
+                  <div className="sidebar__subnav" role="tablist" aria-label={item.label}>
+                    {tabs.map((tab) => (
+                      <NavLink
+                        key={tab.to}
+                        to={tab.to}
+                        end={tab.end ?? true}
+                        className={({ isActive }) => clsx('sidebar__sublink', isActive && 'sidebar__sublink--active')}
+                        onClick={() => {
+                          if (isCompactShell) {
+                            setIsMobileNavOpen(false);
+                          }
+                        }}
+                      >
+                        <FontAwesomeIcon icon={tab.icon} className="sidebar__sublink-icon" />
+                        <span className="sidebar__sublink-label">{tab.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </nav>
       </aside>
 

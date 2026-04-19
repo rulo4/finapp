@@ -1,8 +1,10 @@
 import { Suspense, lazy } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
+import { investmentTabs, spendingTabs } from './config/navigation';
 import { useAuth } from './features/auth/AuthContext';
 import { AuthPage } from './pages/AuthPage';
 import { AppShell } from './layouts/AppShell';
+import { TabbedSectionLayout } from './layouts/TabbedSectionLayout';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const IncomePage = lazy(() => import('./pages/IncomePage').then((module) => ({ default: module.IncomePage })));
@@ -55,6 +57,14 @@ export default function App() {
           }
         />
         <Route
+          path="/dashboard/:dashboardTab"
+          element={
+            <Suspense fallback={<RouteFallback />}>
+              <DashboardPage />
+            </Suspense>
+          }
+        />
+        <Route
           path="/income"
           element={
             <Suspense fallback={<RouteFallback />}>
@@ -63,61 +73,97 @@ export default function App() {
           }
         />
         <Route
-          path="/expenses"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <ExpensesPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/credit-cards"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <CreditCardsPage />
-            </Suspense>
-          }
-        />
-        <Route
           path="/investments"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <InvestmentsPage />
-            </Suspense>
-          }
-        />
+          element={<TabbedSectionLayout tabs={investmentTabs} ariaLabel="Inversiones" />}
+        >
+          <Route
+            index
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <InvestmentsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="buys"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <StockBuysPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="sells"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <StockSellsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="holdings"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <StockHoldingsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="dividends"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <DividendsPage />
+              </Suspense>
+            }
+          />
+        </Route>
         <Route
-          path="/stocks/buys"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <StockBuysPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/stocks/sells"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <StockSellsPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/stocks/holdings"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <StockHoldingsPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/dividends"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <DividendsPage />
-            </Suspense>
-          }
-        />
+          path="/spending"
+          element={<TabbedSectionLayout tabs={spendingTabs} ariaLabel="Gastos" />}
+        >
+          <Route
+            index
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <ExpensesPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="tickets"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TicketsPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="scan"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <TicketScanPage />
+              </Suspense>
+            }
+          />
+          <Route
+            path="credit-cards"
+            element={
+              <Suspense fallback={<RouteFallback />}>
+                <CreditCardsPage />
+              </Suspense>
+            }
+          />
+        </Route>
+        <Route path="/movements" element={<Navigate to="/income" replace />} />
+        <Route path="/movements/expenses" element={<Navigate to="/spending" replace />} />
+        <Route path="/expenses" element={<Navigate to="/spending" replace />} />
+        <Route path="/credit-cards" element={<Navigate to="/spending/credit-cards" replace />} />
+        <Route path="/stocks/buys" element={<Navigate to="/investments/buys" replace />} />
+        <Route path="/stocks/sells" element={<Navigate to="/investments/sells" replace />} />
+        <Route path="/stocks/holdings" element={<Navigate to="/investments/holdings" replace />} />
+        <Route path="/dividends" element={<Navigate to="/investments/dividends" replace />} />
+        <Route path="/tickets" element={<Navigate to="/spending/tickets" replace />} />
+        <Route path="/tickets/scan" element={<Navigate to="/spending/scan" replace />} />
         <Route
           path="/catalogs"
           element={
@@ -127,18 +173,10 @@ export default function App() {
           }
         />
         <Route
-          path="/tickets"
+          path="/catalogs/:catalogKey"
           element={
             <Suspense fallback={<RouteFallback />}>
-              <TicketsPage />
-            </Suspense>
-          }
-        />
-        <Route
-          path="/tickets/scan"
-          element={
-            <Suspense fallback={<RouteFallback />}>
-              <TicketScanPage />
+              <CatalogsPage />
             </Suspense>
           }
         />

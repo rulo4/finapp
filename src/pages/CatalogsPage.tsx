@@ -1,35 +1,19 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { type IconDefinition } from '@fortawesome/fontawesome-svg-core';
 import {
-  faBuildingColumns,
-  faChartLine,
-  faCreditCard,
   faEraser,
   faFloppyDisk,
-  faMoneyBillWave,
   faRotateLeft,
-  faScaleBalanced,
-  faStore,
-  faTags,
   faTrash,
-  faWallet,
 } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { useNavigate, useParams } from 'react-router-dom';
+import { catalogConfigs, defaultCatalog, getCatalogConfig, getCatalogPath, type CatalogConfig, type CatalogKind } from '../config/catalogs';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type PaymentInstrumentType = 'cash' | 'debit_card' | 'credit_card';
 type SecurityInstrumentType = 'stock' | 'etf' | 'fibra' | 'reit' | 'adr' | 'fund' | 'other';
-type CatalogKind = 'basic' | 'payment_instruments' | 'securities' | 'brokers';
-
-type CatalogConfig = {
-  key: string;
-  label: string;
-  description: string;
-  kind: CatalogKind;
-  icon: IconDefinition;
-};
 
 type CatalogDbRow = {
   id: string;
@@ -100,66 +84,6 @@ const activeOptions: readonly SelectOption[] = [
   { value: 'false', label: 'No' },
 ];
 
-const catalogConfigs: CatalogConfig[] = [
-  {
-    key: 'expense_categories',
-    label: 'Categorías de gasto',
-    description: 'Clasifica tus egresos para entender mejor a dónde va tu dinero y agilizar la captura.',
-    kind: 'basic',
-    icon: faTags,
-  },
-  {
-    key: 'income_sources',
-    label: 'Fuentes de ingreso',
-    description: 'Define de dónde provienen tus ingresos.',
-    kind: 'basic',
-    icon: faMoneyBillWave,
-  },
-  {
-    key: 'payment_instruments',
-    label: 'Instrumentos de pago',
-    description: 'Administra efectivo, débito y crédito para tus egresos.',
-    kind: 'payment_instruments',
-    icon: faCreditCard,
-  },
-  {
-    key: 'stores',
-    label: 'Tiendas',
-    description: 'Catálogo de comercios asociados a tus consumos y compras.',
-    kind: 'basic',
-    icon: faStore,
-  },
-  {
-    key: 'unit_of_measures',
-    label: 'Unidades de medida',
-    description: 'Unidades para capturar tus egresos sin texto libre.',
-    kind: 'basic',
-    icon: faScaleBalanced,
-  },
-  {
-    key: 'brokers',
-    label: 'Brokers',
-    description: 'Intermediarios para tus operaciones de inversión.',
-    kind: 'brokers',
-    icon: faBuildingColumns,
-  },
-  {
-    key: 'investment_entities',
-    label: 'Entidades de inversión',
-    description: 'Vehículos no bursátiles usados en tus inversiones.',
-    kind: 'basic',
-    icon: faWallet,
-  },
-  {
-    key: 'securities',
-    label: 'Valores bursátiles',
-    description: 'Catálogo maestro para tus compras, ventas y dividendos.',
-    kind: 'securities',
-    icon: faChartLine,
-  },
-];
-
-const defaultCatalog = catalogConfigs[0];
 const DEFAULT_COLUMN_WIDTH = 108;
 const LONG_DESCRIPTION_COLUMN_WIDTH = 220;
 const GRID_ROW_HEIGHT = 32;
@@ -321,7 +245,8 @@ function formatCatalogIssuesMessage(row: CatalogGridRow, config: CatalogConfig) 
 }
 
 export function CatalogsPage() {
-  const [selectedCatalogKey, setSelectedCatalogKey] = useState(defaultCatalog.key);
+  const navigate = useNavigate();
+  const { catalogKey } = useParams<{ catalogKey?: string }>();
   const [rows, setRows] = useState<CatalogGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -330,14 +255,24 @@ export function CatalogsPage() {
   const gridRef = useRef<DataGridHandle>(null);
   const autoEditCellRef = useRef<string | null>(null);
 
-  const selectedCatalog = useMemo(
-    () => catalogConfigs.find((catalog) => catalog.key === selectedCatalogKey) ?? defaultCatalog,
-    [selectedCatalogKey],
-  );
+  const selectedCatalog = useMemo(() => getCatalogConfig(catalogKey) ?? defaultCatalog, [catalogKey]);
+
+  useEffect(() => {
+    if (catalogKey && !getCatalogConfig(catalogKey)) {
+      navigate('/catalogs', { replace: true });
+    }
+  }, [catalogKey, navigate]);
 
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+
+  const handleSelectCatalog = useCallback(
+    (nextCatalogKey: string) => {
+      void navigate(getCatalogPath(nextCatalogKey));
+    },
+    [navigate],
+  );
 
   const loadRows = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
@@ -825,7 +760,7 @@ export function CatalogsPage() {
             <div className="catalog-selector" data-tour="catalogs-selector">
               <div className="catalog-tabs" role="tablist" aria-label="Catálogos">
                 {catalogConfigs.map((catalog) => {
-                  const isActive = catalog.key === selectedCatalogKey;
+                  const isActive = catalog.key === selectedCatalog.key;
 
                   return (
                     <button
@@ -838,7 +773,7 @@ export function CatalogsPage() {
                       aria-controls="catalogs-grid-panel"
                       aria-label={catalog.label}
                       title={catalog.label}
-                      onClick={() => setSelectedCatalogKey(catalog.key)}
+                      onClick={() => handleSelectCatalog(catalog.key)}
                     >
                       <FontAwesomeIcon icon={catalog.icon} />
                       {isActive ? <span className="catalog-tab__label">{catalog.label}</span> : null}

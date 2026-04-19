@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faChartColumn, faChartPie } from '@fortawesome/free-solid-svg-icons';
+import { NavLink, useNavigate, useParams } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -19,6 +20,7 @@ import {
   isSupabaseConfigured,
   supabase,
 } from '../lib/supabase/client';
+import { dashboardTabs, type DashboardTabKey } from '../config/navigation';
 import {
   type InvestmentDateFilterMode,
   type Security,
@@ -78,7 +80,6 @@ type StockSellDashboardRow = {
   sell_group_id: string | null;
 };
 
-type DashboardTabKey = 'income' | 'expense' | 'investment' | 'security';
 type DashboardChartVariant = 'pie' | 'bar';
 
 type DashboardChartDatum = {
@@ -105,12 +106,11 @@ type DashboardTooltipPayload = {
   payload?: Array<{ payload: DashboardChartDatum }>;
 };
 
-const DASHBOARD_TABS: Array<{ key: DashboardTabKey; label: string }> = [
-  { key: 'income', label: 'Ingresos' },
-  { key: 'expense', label: 'Egresos' },
-  { key: 'investment', label: 'Inversión' },
-  { key: 'security', label: 'Securities' },
-];
+const DASHBOARD_TAB_BY_ROUTE_SEGMENT: Partial<Record<string, DashboardTabKey>> = {
+  expenses: 'expense',
+  investments: 'investment',
+  securities: 'security',
+};
 
 const CHART_COLORS = ['#0f766e', '#2563eb', '#ea580c', '#7c3aed', '#db2777', '#4f46e5', '#0891b2', '#65a30d', '#dc2626', '#ca8a04'];
 const NEGATIVE_CHART_COLOR = '#b91c1c';
@@ -471,12 +471,13 @@ function DashboardChartCard({
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
+  const { dashboardTab } = useParams<{ dashboardTab?: string }>();
   const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'ok' | 'error'>(
     isSupabaseConfigured() ? 'checking' : 'idle',
   );
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured());
   const [periodMode, setPeriodMode] = useState<InvestmentDateFilterMode>('month');
-  const [activeTab, setActiveTab] = useState<DashboardTabKey>('income');
   const [chartVariants, setChartVariants] = useState<Record<DashboardTabKey, DashboardChartVariant>>({
     income: 'pie',
     expense: 'pie',
@@ -484,10 +485,17 @@ export function DashboardPage() {
     security: 'bar',
   });
   const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD_DATA);
+  const activeTab = dashboardTab ? DASHBOARD_TAB_BY_ROUTE_SEGMENT[dashboardTab] ?? 'income' : 'income';
   const activePeriod = useMemo(() => getDateRange(periodMode), [periodMode]);
   const snapshotEndDate = activePeriod.end || getTodayDate();
   const activeChartVariant = chartVariants[activeTab];
   const nextChartVariant = activeChartVariant === 'pie' ? 'bar' : 'pie';
+
+  useEffect(() => {
+    if (dashboardTab && !(dashboardTab in DASHBOARD_TAB_BY_ROUTE_SEGMENT)) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [dashboardTab, navigate]);
 
   useEffect(() => {
     if (!isSupabaseConfigured()) {
@@ -730,18 +738,31 @@ export function DashboardPage() {
           </button>
 
           <div className="dashboard-tabs" role="tablist" aria-label="Seleccionar dashboard activo">
-            {DASHBOARD_TABS.map((tab) => (
-              <button
-                key={tab.key}
-                type="button"
-                role="tab"
-                aria-selected={activeTab === tab.key}
-                className={`dashboard-tabs__button ${activeTab === tab.key ? 'dashboard-tabs__button--active' : ''}`}
-                onClick={() => setActiveTab(tab.key)}
-              >
-                {tab.label}
-              </button>
-            ))}
+            {dashboardTabs.map((tab) => {
+              const tabKey: DashboardTabKey =
+                tab.to === '/dashboard'
+                  ? 'income'
+                  : tab.to === '/dashboard/expenses'
+                    ? 'expense'
+                    : tab.to === '/dashboard/investments'
+                      ? 'investment'
+                      : 'security';
+
+              return (
+                <NavLink
+                  key={tab.to}
+                  to={tab.to}
+                  end={tab.end ?? true}
+                  role="tab"
+                  aria-selected={activeTab === tabKey}
+                  className={({ isActive }) => `dashboard-tabs__button ${isActive ? 'dashboard-tabs__button--active' : ''}`}
+                  title={tab.label}
+                  aria-label={tab.label}
+                >
+                  {tab.label}
+                </NavLink>
+              );
+            })}
           </div>
         </div>
 
