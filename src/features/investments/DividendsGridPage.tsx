@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
+import { AppDatePicker } from '../shared/AppDatePicker';
 import {
+  AppSelect,
   FX_AUTO_SWITCH_FEEDBACK,
   InputCellEditor,
   SelectCellEditor,
@@ -190,6 +192,8 @@ export function DividendsGridPage() {
   const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<DividendGridRow[]>([]);
   const [tickerFilter, setTickerFilter] = useState('');
+  const [entryDateFilter, setEntryDateFilter] = useState('');
+  const [brokerFilterId, setBrokerFilterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
@@ -488,6 +492,10 @@ export function DividendsGridPage() {
     () => [{ value: '', label: 'Broker' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
     [brokers],
   );
+  const brokerFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todos' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
+    [brokers],
+  );
   const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
   const securityLabelById = useMemo(
     () => new Map(securities.map((security) => [security.id, formatSecurityLabel(security)])),
@@ -504,8 +512,11 @@ export function DividendsGridPage() {
     [securities],
   );
   const filteredRows = useMemo(() => {
-    const normalizedFilter = tickerFilter.trim().toLowerCase();
-    if (!normalizedFilter) {
+    const normalizedTickerFilter = tickerFilter.trim().toLowerCase();
+    const normalizedDateFilter = entryDateFilter.trim();
+    const normalizedBrokerFilter = brokerFilterId.trim();
+
+    if (!normalizedTickerFilter && !normalizedDateFilter && !normalizedBrokerFilter) {
       return rows;
     }
 
@@ -514,10 +525,18 @@ export function DividendsGridPage() {
         return true;
       }
 
+      if (normalizedDateFilter && row.entryDate !== normalizedDateFilter) {
+        return false;
+      }
+
+      if (normalizedBrokerFilter && row.brokerId !== normalizedBrokerFilter) {
+        return false;
+      }
+
       const tickerLabel = securityLabelById.get(row.securityId)?.toLowerCase() ?? '';
-      return tickerLabel.includes(normalizedFilter);
+      return !normalizedTickerFilter || tickerLabel.includes(normalizedTickerFilter);
     });
-  }, [rows, securityLabelById, tickerFilter]);
+  }, [brokerFilterId, entryDateFilter, rows, securityLabelById, tickerFilter]);
   const visibleSummary = useMemo(() => {
     const visibleRows = filteredRows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
@@ -551,6 +570,42 @@ export function DividendsGridPage() {
           onChange={(event) => {
             setTickerFilter(event.target.value);
           }}
+        />
+      </div>
+    );
+  }
+
+  function renderDateHeaderCell(props: RenderHeaderCellProps<DividendGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Fecha</div>
+        <AppDatePicker
+          className="grid-header-filter__input"
+          value={entryDateFilter}
+          ariaLabel="Filtrar dividendos por fecha"
+          placeholder="AAAA-MM-DD"
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+            }
+          }}
+          onChange={setEntryDateFilter}
+        />
+      </div>
+    );
+  }
+
+  function renderBrokerHeaderCell(_props: RenderHeaderCellProps<DividendGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Broker</div>
+        <AppSelect
+          compact
+          ariaLabel="Filtrar dividendos por broker"
+          options={brokerFilterOptions}
+          value={brokerFilterId}
+          placeholder="Todos"
+          onChange={setBrokerFilterId}
         />
       </div>
     );
@@ -623,6 +678,8 @@ export function DividendsGridPage() {
       key: 'entryDate',
       name: 'Fecha',
       width: DEFAULT_COLUMN_WIDTH,
+      headerCellClass: 'grid-header-filter-cell',
+      renderHeaderCell: renderDateHeaderCell,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
     },
     {
@@ -638,6 +695,8 @@ export function DividendsGridPage() {
       key: 'brokerId',
       name: 'Broker',
       width: 148,
+      headerCellClass: 'grid-header-filter-cell',
+      renderHeaderCell: renderBrokerHeaderCell,
       renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
       renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
     },
@@ -678,7 +737,7 @@ export function DividendsGridPage() {
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [brokerLabelById, brokerOptions, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions, tickerFilter]);
+  ], [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, entryDateFilter, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions, tickerFilter]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 

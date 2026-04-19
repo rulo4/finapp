@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
+import { AppDatePicker } from '../shared/AppDatePicker';
 import {
+  AppSelect,
   FX_AUTO_SWITCH_FEEDBACK,
   InputCellEditor,
   SelectCellEditor,
@@ -354,6 +356,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<TradeGridRow[]>([]);
   const [tickerFilter, setTickerFilter] = useState('');
+  const [dateColumnFilter, setDateColumnFilter] = useState('');
+  const [brokerFilterId, setBrokerFilterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
@@ -825,6 +829,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     () => [{ value: '', label: 'Broker' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
     [brokers],
   );
+  const brokerFilterOptions = useMemo<readonly SelectOption[]>(
+    () => [{ value: '', label: 'Todos' }, ...brokers.map((broker) => ({ value: broker.id, label: broker.name }))],
+    [brokers],
+  );
   const brokerById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker])), [brokers]);
   const brokerLabelById = useMemo(() => new Map(brokers.map((broker) => [broker.id, broker.name])), [brokers]);
   const securityLabelById = useMemo(
@@ -843,8 +851,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   );
   const buyById = useMemo(() => new Map(buyHistory.map((buy) => [buy.id, buy])), [buyHistory]);
   const filteredRows = useMemo(() => {
-    const normalizedFilter = tickerFilter.trim().toLowerCase();
-    if (!normalizedFilter) {
+    const normalizedTickerFilter = tickerFilter.trim().toLowerCase();
+    const normalizedDateFilter = dateColumnFilter.trim();
+    const normalizedBrokerFilter = brokerFilterId.trim();
+
+    if (!normalizedTickerFilter && !normalizedDateFilter && !normalizedBrokerFilter) {
       return rows;
     }
 
@@ -853,10 +864,18 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         return true;
       }
 
+      if (normalizedDateFilter && row.tradeDate !== normalizedDateFilter) {
+        return false;
+      }
+
+      if (normalizedBrokerFilter && row.brokerId !== normalizedBrokerFilter) {
+        return false;
+      }
+
       const tickerLabel = securityLabelById.get(row.securityId)?.toLowerCase() ?? '';
-      return tickerLabel.includes(normalizedFilter);
+      return !normalizedTickerFilter || tickerLabel.includes(normalizedTickerFilter);
     });
-  }, [rows, securityLabelById, tickerFilter]);
+  }, [brokerFilterId, dateColumnFilter, rows, securityLabelById, tickerFilter]);
   const visibleSummary = useMemo(() => {
     const visibleRows = filteredRows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
@@ -932,6 +951,42 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           onChange={(event) => {
             setTickerFilter(event.target.value);
           }}
+        />
+      </div>
+    );
+  }
+
+  function renderDateHeaderCell(props: RenderHeaderCellProps<TradeGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Fecha</div>
+        <AppDatePicker
+          className="grid-header-filter__input"
+          value={dateColumnFilter}
+          ariaLabel={`Filtrar ${panelTitle.toLowerCase()} por fecha`}
+          placeholder="AAAA-MM-DD"
+          onKeyDown={(event) => {
+            if (['ArrowLeft', 'ArrowRight'].includes(event.key)) {
+              event.stopPropagation();
+            }
+          }}
+          onChange={setDateColumnFilter}
+        />
+      </div>
+    );
+  }
+
+  function renderBrokerHeaderCell(_props: RenderHeaderCellProps<TradeGridRow>) {
+    return (
+      <div className="grid-header-filter" onClick={(event) => event.stopPropagation()}>
+        <div className="grid-header-filter__label">Broker</div>
+        <AppSelect
+          compact
+          ariaLabel={`Filtrar ${panelTitle.toLowerCase()} por broker`}
+          options={brokerFilterOptions}
+          value={brokerFilterId}
+          placeholder="Todos"
+          onChange={setBrokerFilterId}
         />
       </div>
     );
@@ -1018,6 +1073,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         key: 'brokerId',
         name: 'Broker',
         width: 148,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderBrokerHeaderCell,
         renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
       },
@@ -1036,6 +1093,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           key: 'tradeDate',
           name: 'F. venta',
           width: DEFAULT_COLUMN_WIDTH,
+          headerCellClass: 'grid-header-filter-cell',
+          renderHeaderCell: renderDateHeaderCell,
           renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
         },
         tickerColumn,
@@ -1043,6 +1102,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           key: 'brokerId',
           name: 'Broker',
           width: 148,
+          headerCellClass: 'grid-header-filter-cell',
+          renderHeaderCell: renderBrokerHeaderCell,
           renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
           renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
         },
@@ -1164,6 +1225,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         key: 'tradeDate',
         name: 'Fecha',
         width: DEFAULT_COLUMN_WIDTH,
+        headerCellClass: 'grid-header-filter-cell',
+        renderHeaderCell: renderDateHeaderCell,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
@@ -1204,7 +1267,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
       },
     ] satisfies readonly Column<TradeGridRow>[];
-  }, [brokerLabelById, brokerOptions, buyById, draftSellPreview, handleDeleteRow, handleRevertRow, kind, panelTitle, persistRow, securityLabelById, securityOptions, tickerFilter]);
+  }, [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, buyById, dateColumnFilter, draftSellPreview, handleDeleteRow, handleRevertRow, kind, panelTitle, persistRow, securityLabelById, securityOptions, tickerFilter]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const draftSellFeedback = draftSellPreview?.errorMessage ?? null;
