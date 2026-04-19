@@ -10,8 +10,9 @@ import {
   faRotateLeft,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import { computeCreditCardPeriods, type CreditCardExpense, type CreditCardPayment, type CreditCardStatementReconciliation } from '../features/credit-cards/statementMath';
 import { getTodayIsoDate, isIsoDateString } from '../features/shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
@@ -308,6 +309,9 @@ export function CreditCardsPage() {
   const configRowsRef = useRef<CreditCardConfigGridRow[]>([]);
   const paymentRowsRef = useRef<CreditCardPaymentGridRow[]>([]);
   const reconciliationRowsRef = useRef<CreditCardReconciliationGridRow[]>([]);
+  const configGridRef = useRef<DataGridHandle>(null);
+  const paymentGridRef = useRef<DataGridHandle>(null);
+  const reconciliationGridRef = useRef<DataGridHandle>(null);
   const baselineConfigRowsRef = useRef<Map<string, CreditCardConfigGridRow>>(new Map());
   const baselinePaymentRowsRef = useRef<Map<string, CreditCardPaymentGridRow>>(new Map());
   const baselineReconciliationRowsRef = useRef<Map<string, CreditCardReconciliationGridRow>>(new Map());
@@ -1206,6 +1210,45 @@ export function CreditCardsPage() {
   ].find(Boolean);
   const visibleErrorMessage = currentRowError ?? errorMessage;
 
+  const handleNavigateConfigGrid = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef: configGridRef,
+        columns: configColumns,
+        rows: configRows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [configColumns, configRows],
+  );
+
+  const handleNavigatePaymentGrid = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef: paymentGridRef,
+        columns: paymentColumns,
+        rows: paymentRows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [paymentColumns, paymentRows],
+  );
+
+  const handleNavigateReconciliationGrid = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef: reconciliationGridRef,
+        columns: reconciliationColumns,
+        rows: reconciliationRows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [reconciliationColumns, reconciliationRows],
+  );
+
   return (
     <div className="page credit-cards-page">
       <section className="card credit-cards-toolbar">
@@ -1230,35 +1273,38 @@ export function CreditCardsPage() {
           <span className="dashboard-stat">Pend. {configRows.filter((row) => !row.persistedId).length}</span>
         </div>
         <div className="grid-wrapper grid-wrapper--tall">
-          <DataGrid
-            columns={configColumns}
-            rows={configRows}
-            rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={GRID_ROW_HEIGHT}
-            rowKeyGetter={(row) => row.id}
-            onRowsChange={handleConfigRowsChange}
-            onCellClick={(args) => {
-              setSelectedInstrumentId(args.row.paymentInstrumentId);
-              if (args.column.renderEditCell) {
-                args.selectCell(true);
-              }
-            }}
-            defaultColumnOptions={{ resizable: true }}
-            rowClass={(row) => {
-              const stateClass = row.status === 'saving'
-                ? 'row-saving'
-                : row.status === 'error'
-                  ? 'row-error'
-                  : row.status === 'dirty'
-                    ? 'row-dirty'
-                    : row.status === 'new'
-                      ? 'row-new'
-                      : 'row-saved';
+          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateConfigGrid}>
+            <DataGrid
+              ref={configGridRef}
+              columns={configColumns}
+              rows={configRows}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={GRID_ROW_HEIGHT}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleConfigRowsChange}
+              onCellClick={(args) => {
+                setSelectedInstrumentId(args.row.paymentInstrumentId);
+                if (args.column.renderEditCell) {
+                  args.selectCell(true);
+                }
+              }}
+              defaultColumnOptions={{ resizable: true }}
+              rowClass={(row) => {
+                const stateClass = row.status === 'saving'
+                  ? 'row-saving'
+                  : row.status === 'error'
+                    ? 'row-error'
+                    : row.status === 'dirty'
+                      ? 'row-dirty'
+                      : row.status === 'new'
+                        ? 'row-new'
+                        : 'row-saved';
 
-              return `${stateClass}${row.paymentInstrumentId === selectedInstrumentId ? ' row-selected-soft' : ''}`;
-            }}
-            style={{ blockSize: 240 }}
-          />
+                return `${stateClass}${row.paymentInstrumentId === selectedInstrumentId ? ' row-selected-soft' : ''}`;
+              }}
+              style={{ blockSize: 240 }}
+            />
+          </GridEditorNavigationProvider>
         </div>
       </section>
 
@@ -1293,32 +1339,35 @@ export function CreditCardsPage() {
             <span className="dashboard-stat">{paymentRows.filter((row) => !row.isDraft).length}</span>
           </div>
           <div className="grid-wrapper grid-wrapper--tall">
-            <DataGrid
-              columns={paymentColumns}
-              rows={paymentRows}
-              rowHeight={GRID_ROW_HEIGHT}
-              headerRowHeight={GRID_ROW_HEIGHT}
-              rowKeyGetter={(row) => row.id}
-              onRowsChange={handlePaymentRowsChange}
-              onCellClick={(args) => {
-                if (args.column.renderEditCell) {
-                  args.selectCell(true);
-                }
-              }}
-              defaultColumnOptions={{ resizable: true }}
-              rowClass={(row) => (
-                row.status === 'saving'
-                  ? 'row-saving'
-                  : row.status === 'error'
-                    ? 'row-error'
-                    : row.status === 'dirty'
-                      ? 'row-dirty'
-                      : row.status === 'new'
-                        ? 'row-new'
-                        : 'row-saved'
-              )}
-              style={{ blockSize: 340 }}
-            />
+            <GridEditorNavigationProvider onNavigateToNextCell={handleNavigatePaymentGrid}>
+              <DataGrid
+                ref={paymentGridRef}
+                columns={paymentColumns}
+                rows={paymentRows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={GRID_ROW_HEIGHT}
+                rowKeyGetter={(row) => row.id}
+                onRowsChange={handlePaymentRowsChange}
+                onCellClick={(args) => {
+                  if (args.column.renderEditCell) {
+                    args.selectCell(true);
+                  }
+                }}
+                defaultColumnOptions={{ resizable: true }}
+                rowClass={(row) => (
+                  row.status === 'saving'
+                    ? 'row-saving'
+                    : row.status === 'error'
+                      ? 'row-error'
+                      : row.status === 'dirty'
+                        ? 'row-dirty'
+                        : row.status === 'new'
+                          ? 'row-new'
+                          : 'row-saved'
+                )}
+                style={{ blockSize: 340 }}
+              />
+            </GridEditorNavigationProvider>
           </div>
         </section>
 
@@ -1332,30 +1381,33 @@ export function CreditCardsPage() {
           </div>
 
           <div className="grid-wrapper grid-wrapper--tall">
-            <DataGrid
-              columns={reconciliationColumns}
-              rows={reconciliationRows}
-              rowHeight={GRID_ROW_HEIGHT}
-              headerRowHeight={GRID_ROW_HEIGHT}
-              rowKeyGetter={(row) => row.id}
-              onRowsChange={handleReconciliationRowsChange}
-              onCellClick={(args) => {
-                if (args.column.renderEditCell) {
-                  args.selectCell(true);
-                }
-              }}
-              defaultColumnOptions={{ resizable: true }}
-              rowClass={(row) => (
-                row.status === 'saving'
-                  ? 'row-saving'
-                  : row.status === 'error'
-                    ? 'row-error'
-                    : row.status === 'dirty'
-                      ? 'row-dirty'
-                      : 'row-saved'
-              )}
-              style={{ blockSize: 250 }}
-            />
+            <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateReconciliationGrid}>
+              <DataGrid
+                ref={reconciliationGridRef}
+                columns={reconciliationColumns}
+                rows={reconciliationRows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={GRID_ROW_HEIGHT}
+                rowKeyGetter={(row) => row.id}
+                onRowsChange={handleReconciliationRowsChange}
+                onCellClick={(args) => {
+                  if (args.column.renderEditCell) {
+                    args.selectCell(true);
+                  }
+                }}
+                defaultColumnOptions={{ resizable: true }}
+                rowClass={(row) => (
+                  row.status === 'saving'
+                    ? 'row-saving'
+                    : row.status === 'error'
+                      ? 'row-error'
+                      : row.status === 'dirty'
+                        ? 'row-dirty'
+                        : 'row-saved'
+                )}
+                style={{ blockSize: 250 }}
+              />
+            </GridEditorNavigationProvider>
           </div>
 
           <div className="credit-cards-activity">

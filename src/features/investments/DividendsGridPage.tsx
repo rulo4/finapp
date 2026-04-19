@@ -11,6 +11,7 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../shared/gridNavigation';
 import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
@@ -741,6 +742,19 @@ export function DividendsGridPage() {
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
+  const handleNavigateToNextCell = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef,
+        columns,
+        rows: filteredRows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [columns, filteredRows],
+  );
+
   function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
     const cellId = `${rowIdx}:${columnKey}`;
 
@@ -804,34 +818,36 @@ export function DividendsGridPage() {
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
         <div className="grid-wrapper grid-wrapper--tall">
-          <DataGrid
-            ref={gridRef}
-            columns={columns}
-            rows={filteredRows}
-            rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
-            rowKeyGetter={(row) => row.id}
-            onRowsChange={handleRowsChange}
-            onCellClick={(args) => {
-              if (args.column.renderEditCell) {
-                args.selectCell(true);
-              }
-            }}
-            onSelectedCellChange={(args) => {
-              if (args.row && args.column.renderEditCell) {
-                focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-              }
-            }}
-            defaultColumnOptions={{ resizable: true }}
-            rowClass={(row) => {
-              if (row.status === 'saving') return 'row-saving';
-              if (row.status === 'error') return 'row-error';
-              if (row.status === 'new') return 'row-new';
-              if (row.status === 'dirty') return 'row-dirty';
-              return 'row-saved';
-            }}
-            style={{ blockSize: 500 }}
-          />
+          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+            <DataGrid
+              ref={gridRef}
+              columns={columns}
+              rows={filteredRows}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleRowsChange}
+              onCellClick={(args) => {
+                if (args.column.renderEditCell) {
+                  args.selectCell(true);
+                }
+              }}
+              onSelectedCellChange={(args) => {
+                if (args.row && args.column.renderEditCell) {
+                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                }
+              }}
+              defaultColumnOptions={{ resizable: true }}
+              rowClass={(row) => {
+                if (row.status === 'saving') return 'row-saving';
+                if (row.status === 'error') return 'row-error';
+                if (row.status === 'new') return 'row-new';
+                if (row.status === 'dirty') return 'row-dirty';
+                return 'row-saved';
+              }}
+              style={{ blockSize: 500 }}
+            />
+          </GridEditorNavigationProvider>
         </div>
       </section>
     </div>

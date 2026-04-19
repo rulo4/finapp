@@ -11,6 +11,7 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../shared/gridNavigation';
 import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
@@ -1272,6 +1273,20 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const draftSellFeedback = draftSellPreview?.errorMessage ?? null;
 
+  const handleNavigateToNextCell = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef,
+        columns,
+        rows: filteredRows,
+        rowIdx,
+        columnIdx,
+        isCellEditable: ({ row, column }) => Boolean(column.renderEditCell) && (kind !== 'sell' || row.isDraft),
+      });
+    },
+    [columns, filteredRows, kind],
+  );
+
   function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
     const cellId = `${rowIdx}:${columnKey}`;
 
@@ -1345,57 +1360,59 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         {draftSellFeedback ? <div className="feedback-banner feedback-banner--error">{draftSellFeedback}</div> : null}
 
         <div className="grid-wrapper grid-wrapper--tall">
-          <DataGrid
-            ref={gridRef}
-            columns={columns}
-            rows={filteredRows}
-            rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
-            rowKeyGetter={(row) => row.id}
-            onRowsChange={handleRowsChange}
-            onCellClick={(args) => {
-              if (kind === 'sell' && !args.row.isDraft) {
-                return;
-              }
+          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+            <DataGrid
+              ref={gridRef}
+              columns={columns}
+              rows={filteredRows}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleRowsChange}
+              onCellClick={(args) => {
+                if (kind === 'sell' && !args.row.isDraft) {
+                  return;
+                }
 
-              if (args.column.renderEditCell) {
-                args.selectCell(true);
-              }
-            }}
-            onSelectedCellChange={(args) => {
-              if (kind === 'sell' && args.row && !args.row.isDraft) {
-                return;
-              }
+                if (args.column.renderEditCell) {
+                  args.selectCell(true);
+                }
+              }}
+              onSelectedCellChange={(args) => {
+                if (kind === 'sell' && args.row && !args.row.isDraft) {
+                  return;
+                }
 
-              if (args.row && args.column.renderEditCell) {
-                focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-              }
-            }}
-            defaultColumnOptions={{ resizable: true }}
-            rowClass={(row) => {
-              const classNames: string[] = [];
-              if (row.status === 'saving') classNames.push('row-saving');
-              else if (row.status === 'error') classNames.push('row-error');
-              else if (row.status === 'new') classNames.push('row-new');
-              else if (row.status === 'dirty') classNames.push('row-dirty');
-              else classNames.push('row-saved');
+                if (args.row && args.column.renderEditCell) {
+                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                }
+              }}
+              defaultColumnOptions={{ resizable: true }}
+              rowClass={(row) => {
+                const classNames: string[] = [];
+                if (row.status === 'saving') classNames.push('row-saving');
+                else if (row.status === 'error') classNames.push('row-error');
+                else if (row.status === 'new') classNames.push('row-new');
+                else if (row.status === 'dirty') classNames.push('row-dirty');
+                else classNames.push('row-saved');
 
-              if (kind === 'sell' && !row.isDraft && row.sellGroupId) {
-                const rowIndex = filteredRows.findIndex((candidate) => candidate.id === row.id);
-                const previousRow = rowIndex > 0 ? filteredRows[rowIndex - 1] : null;
-                const nextRow = rowIndex >= 0 && rowIndex < filteredRows.length - 1 ? filteredRows[rowIndex + 1] : null;
-                const isGroupStart = previousRow?.sellGroupId !== row.sellGroupId;
-                const isGroupEnd = nextRow?.sellGroupId !== row.sellGroupId;
+                if (kind === 'sell' && !row.isDraft && row.sellGroupId) {
+                  const rowIndex = filteredRows.findIndex((candidate) => candidate.id === row.id);
+                  const previousRow = rowIndex > 0 ? filteredRows[rowIndex - 1] : null;
+                  const nextRow = rowIndex >= 0 && rowIndex < filteredRows.length - 1 ? filteredRows[rowIndex + 1] : null;
+                  const isGroupStart = previousRow?.sellGroupId !== row.sellGroupId;
+                  const isGroupEnd = nextRow?.sellGroupId !== row.sellGroupId;
 
-                classNames.push('row-sell-group');
-                if (isGroupStart) classNames.push('row-sell-group-start');
-                if (isGroupEnd) classNames.push('row-sell-group-end');
-              }
+                  classNames.push('row-sell-group');
+                  if (isGroupStart) classNames.push('row-sell-group-start');
+                  if (isGroupEnd) classNames.push('row-sell-group-end');
+                }
 
-              return classNames.join(' ');
-            }}
-            style={{ blockSize: 500 }}
-          />
+                return classNames.join(' ');
+              }}
+              style={{ blockSize: 500 }}
+            />
+          </GridEditorNavigationProvider>
         </div>
       </section>
     </div>

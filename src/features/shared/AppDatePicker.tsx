@@ -14,6 +14,7 @@ type AppDatePickerProps = {
   className?: string;
   placeholder?: string;
   autoFocus?: boolean;
+  enterKeyHint?: InputHTMLAttributes<HTMLInputElement>['enterKeyHint'];
   min?: string;
   max?: string;
   disabled?: boolean;
@@ -63,6 +64,7 @@ export function AppDatePicker({
   className,
   placeholder,
   autoFocus = false,
+  enterKeyHint,
   min,
   max,
   disabled = false,
@@ -169,7 +171,7 @@ export function AppDatePicker({
       portalId="root"
       popperPlacement="bottom-start"
       showPopperArrow={false}
-      customInput={<DateInput className={className} aria-label={ariaLabel} disabled={disabled} />}
+      customInput={<DateInput className={className} aria-label={ariaLabel} disabled={disabled} enterKeyHint={enterKeyHint} />}
       calendarClassName="app-date-picker__calendar"
       calendarStartDay={1}
     />

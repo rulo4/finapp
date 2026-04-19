@@ -2,6 +2,7 @@ import { useEffect, useId, useMemo, useRef, type Ref } from 'react';
 import { type RenderEditCellProps } from 'react-data-grid';
 import Select, { type SelectInstance, type StylesConfig } from 'react-select';
 import { AppDatePicker } from './AppDatePicker';
+import { useGridEditorNavigation } from './gridNavigation';
 import { ISO_DATE_PLACEHOLDER } from './isoDate';
 
 type EditorRow = Record<string, unknown>;
@@ -194,6 +195,7 @@ type InputCellEditorProps<TRow extends EditorRow> = RenderEditCellProps<TRow> & 
 export function InputCellEditor<TRow extends EditorRow>({
   column,
   row,
+  rowIdx,
   onRowChange,
   onClose,
   inputType = 'text',
@@ -204,6 +206,19 @@ export function InputCellEditor<TRow extends EditorRow>({
   const inputRef = useRef<HTMLInputElement>(null);
   const key = column.key as keyof TRow;
   const isIsoDateInput = inputType === 'iso-date';
+  const navigateToNextCell = useGridEditorNavigation();
+
+  function commitAndNavigateToNextCell() {
+    onClose(true, true);
+
+    queueMicrotask(() => {
+      navigateToNextCell?.({
+        rowIdx,
+        columnIdx: column.idx,
+        columnKey: String(column.key),
+      });
+    });
+  }
 
   function closeEditorDeferred(shouldCommit: boolean) {
     queueMicrotask(() => {
@@ -227,9 +242,11 @@ export function InputCellEditor<TRow extends EditorRow>({
           onRowChange({ ...row, [key]: nextValue } as TRow);
         }}
         onCalendarClose={() => closeEditorDeferred(true)}
+        enterKeyHint={navigateToNextCell ? 'next' : 'done'}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
-            closeEditorDeferred(true);
+            event.preventDefault();
+            commitAndNavigateToNextCell();
           }
 
           if (event.key === 'Escape') {
@@ -249,6 +266,7 @@ export function InputCellEditor<TRow extends EditorRow>({
       min={min}
       step={step}
       placeholder={placeholder}
+      enterKeyHint={navigateToNextCell ? 'next' : 'done'}
       value={String(row[key] ?? '')}
       onChange={(event) => {
         onRowChange({ ...row, [key]: event.target.value } as TRow);
@@ -256,7 +274,8 @@ export function InputCellEditor<TRow extends EditorRow>({
       onBlur={() => onClose(true, true)}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
-          onClose(true, true);
+          event.preventDefault();
+          commitAndNavigateToNextCell();
         }
 
         if (event.key === 'Escape') {
@@ -274,12 +293,14 @@ type SelectCellEditorProps<TRow extends EditorRow> = RenderEditCellProps<TRow> &
 export function SelectCellEditor<TRow extends EditorRow>({
   column,
   row,
+  rowIdx,
   onRowChange,
   onClose,
   options,
 }: SelectCellEditorProps<TRow>) {
   const selectRef = useRef<SelectInstance<SelectOption, false>>(null);
   const key = column.key as keyof TRow;
+  const navigateToNextCell = useGridEditorNavigation();
 
   useEffect(() => {
     selectRef.current?.focus();
@@ -296,6 +317,14 @@ export function SelectCellEditor<TRow extends EditorRow>({
       onChange={(nextValue) => {
         onRowChange({ ...row, [key]: nextValue } as TRow, true);
         onClose(true, true);
+
+        queueMicrotask(() => {
+          navigateToNextCell?.({
+            rowIdx,
+            columnIdx: column.idx,
+            columnKey: String(column.key),
+          });
+        });
       }}
       onBlur={() => onClose(true, true)}
     />

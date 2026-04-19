@@ -12,6 +12,7 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../features/shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import {
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
@@ -1447,6 +1448,20 @@ export function ExpensesPage() {
     }, 0);
   }
 
+  const handleNavigateToNextCell = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef,
+        columns,
+        rows: visibleRows,
+        rowIdx,
+        columnIdx,
+        isCellEditable: ({ row, column }) => Boolean(column.renderEditCell) && canEditExpenseColumn(row, column.key),
+      });
+    },
+    [columns, visibleRows],
+  );
+
   return (
     <div className="page">
       <section className="card finance-panel">
@@ -1492,34 +1507,36 @@ export function ExpensesPage() {
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
         <div className="grid-wrapper grid-wrapper--tall">
-          <DataGrid
-            ref={gridRef}
-            columns={columns}
-            rows={visibleRows}
-            rowHeight={GRID_ROW_HEIGHT}
-            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
-            rowKeyGetter={(row) => row.id}
-            onRowsChange={handleRowsChange}
-            onCellClick={(args) => {
-              if (args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
-                args.selectCell(true);
-              }
-            }}
-            onSelectedCellChange={(args) => {
-              if (args.row && args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
-                focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-              }
-            }}
-            defaultColumnOptions={{ resizable: true }}
-            rowClass={(row) => {
-              if (row.status === 'saving') return 'row-saving';
-              if (row.status === 'error') return 'row-error';
-              if (row.status === 'new') return 'row-new';
-              if (row.status === 'dirty') return 'row-dirty';
-              return 'row-saved';
-            }}
-            style={{ blockSize: 500 }}
-          />
+          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+            <DataGrid
+              ref={gridRef}
+              columns={columns}
+              rows={visibleRows}
+              rowHeight={GRID_ROW_HEIGHT}
+              headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
+              rowKeyGetter={(row) => row.id}
+              onRowsChange={handleRowsChange}
+              onCellClick={(args) => {
+                if (args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
+                  args.selectCell(true);
+                }
+              }}
+              onSelectedCellChange={(args) => {
+                if (args.row && args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
+                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                }
+              }}
+              defaultColumnOptions={{ resizable: true }}
+              rowClass={(row) => {
+                if (row.status === 'saving') return 'row-saving';
+                if (row.status === 'error') return 'row-error';
+                if (row.status === 'new') return 'row-new';
+                if (row.status === 'dirty') return 'row-dirty';
+                return 'row-saved';
+              }}
+              style={{ blockSize: 500 }}
+            />
+          </GridEditorNavigationProvider>
         </div>
 
         <div className="expense-helper-panel" aria-label="Calculadora rápida de subtotal">

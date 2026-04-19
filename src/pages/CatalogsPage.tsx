@@ -10,6 +10,7 @@ import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
 import { useNavigate, useParams } from 'react-router-dom';
 import { catalogConfigs, defaultCatalog, getCatalogConfig, getCatalogPath, type CatalogConfig, type CatalogKind } from '../config/catalogs';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type PaymentInstrumentType = 'cash' | 'debit_card' | 'credit_card';
@@ -746,6 +747,19 @@ export function CatalogsPage() {
   const currentRowError = rows.find((row) => row.status === 'error')?.errorMessage;
   const visibleErrorMessage = currentRowError ?? errorMessage;
 
+  const handleNavigateToNextCell = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef,
+        columns,
+        rows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [columns, rows],
+  );
+
   return (
     <div className="page">
       <section
@@ -792,34 +806,36 @@ export function CatalogsPage() {
           {visibleErrorMessage ? <div className="feedback-banner feedback-banner--error">{visibleErrorMessage}</div> : null}
 
           <div id="catalogs-grid-panel" className="grid-wrapper grid-wrapper--tall" data-tour="catalogs-grid">
-            <DataGrid
-              ref={gridRef}
-              columns={columns}
-              rows={rows}
-              rowHeight={GRID_ROW_HEIGHT}
-              headerRowHeight={GRID_ROW_HEIGHT}
-              rowKeyGetter={(row) => row.id}
-              onRowsChange={handleRowsChange}
-              onCellClick={(args) => {
-                if (args.column.renderEditCell) {
-                  args.selectCell(true);
-                }
-              }}
-              onSelectedCellChange={(args) => {
-                if (args.row && args.column.renderEditCell) {
-                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-                }
-              }}
-              defaultColumnOptions={{ resizable: true }}
-              rowClass={(row) => {
-                if (row.status === 'saving') return 'row-saving';
-                if (row.status === 'error') return 'row-error';
-                if (row.status === 'new') return 'row-new';
-                if (row.status === 'dirty') return 'row-dirty';
-                return 'row-saved';
-              }}
-              style={{ blockSize: 500 }}
-            />
+            <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+              <DataGrid
+                ref={gridRef}
+                columns={columns}
+                rows={rows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={GRID_ROW_HEIGHT}
+                rowKeyGetter={(row) => row.id}
+                onRowsChange={handleRowsChange}
+                onCellClick={(args) => {
+                  if (args.column.renderEditCell) {
+                    args.selectCell(true);
+                  }
+                }}
+                onSelectedCellChange={(args) => {
+                  if (args.row && args.column.renderEditCell) {
+                    focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                  }
+                }}
+                defaultColumnOptions={{ resizable: true }}
+                rowClass={(row) => {
+                  if (row.status === 'saving') return 'row-saving';
+                  if (row.status === 'error') return 'row-error';
+                  if (row.status === 'new') return 'row-new';
+                  if (row.status === 'dirty') return 'row-dirty';
+                  return 'row-saved';
+                }}
+                style={{ blockSize: 500 }}
+              />
+            </GridEditorNavigationProvider>
           </div>
         </section>
       </section>
