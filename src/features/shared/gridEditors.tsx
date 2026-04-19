@@ -204,11 +204,13 @@ export function InputCellEditor<TRow extends EditorRow>({
   placeholder,
 }: InputCellEditorProps<TRow>) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipBlurCloseRef = useRef(false);
   const key = column.key as keyof TRow;
   const isIsoDateInput = inputType === 'iso-date';
   const navigateToNextCell = useGridEditorNavigation();
 
   function commitAndNavigateToNextCell() {
+    skipBlurCloseRef.current = true;
     onClose(true, true);
 
     queueMicrotask(() => {
@@ -241,7 +243,13 @@ export function InputCellEditor<TRow extends EditorRow>({
         onChange={(nextValue) => {
           onRowChange({ ...row, [key]: nextValue } as TRow);
         }}
-        onCalendarClose={() => closeEditorDeferred(true)}
+        onCalendarClose={() => {
+          if (skipBlurCloseRef.current) {
+            return;
+          }
+
+          closeEditorDeferred(true);
+        }}
         enterKeyHint={navigateToNextCell ? 'next' : 'done'}
         onKeyDown={(event) => {
           if (event.key === 'Enter') {
@@ -271,7 +279,13 @@ export function InputCellEditor<TRow extends EditorRow>({
       onChange={(event) => {
         onRowChange({ ...row, [key]: event.target.value } as TRow);
       }}
-      onBlur={() => onClose(true, true)}
+      onBlur={() => {
+        if (skipBlurCloseRef.current) {
+          return;
+        }
+
+        onClose(true, true);
+      }}
       onKeyDown={(event) => {
         if (event.key === 'Enter') {
           event.preventDefault();
