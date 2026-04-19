@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faArrowRotateRight, faArrowLeft, faCalendarDay, faCamera, faCloudArrowUp, faCreditCard, faFloppyDisk, faImage, faPlus, faReceipt, faShop, faXmark } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
@@ -12,6 +12,7 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../features/shared/gridEditors';
+import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
 import { getTodayIsoDate, isIsoDateString } from '../features/shared/isoDate';
 import type { ParsedTicketExpense, TicketRecord, TicketStatus } from '../features/tickets/types';
@@ -812,6 +813,19 @@ export function TicketScanPage() {
     [categoryOptions, currencyOptions, isReviewEditable, unitOptions],
   );
 
+  const handleNavigateToNextCell = useCallback(
+    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
+      moveToNextEditableGridCell({
+        gridRef,
+        columns,
+        rows,
+        rowIdx,
+        columnIdx,
+      });
+    },
+    [columns, rows],
+  );
+
   return (
     <div className="page">
       <section className="card tickets-hero tickets-hero--scan">
@@ -1017,35 +1031,37 @@ export function TicketScanPage() {
               </div>
 
               <div className="grid-wrapper grid-wrapper--tall">
-                <DataGrid
-                  ref={gridRef}
-                  columns={columns}
-                  rows={rows}
-                  rowHeight={GRID_ROW_HEIGHT}
-                  headerRowHeight={GRID_ROW_HEIGHT}
-                  rowKeyGetter={(row) => row.id}
-                  onRowsChange={(nextRows) => {
-                    if (!isReviewEditable) {
-                      return;
-                    }
+                <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+                  <DataGrid
+                    ref={gridRef}
+                    columns={columns}
+                    rows={rows}
+                    rowHeight={GRID_ROW_HEIGHT}
+                    headerRowHeight={GRID_ROW_HEIGHT}
+                    rowKeyGetter={(row) => row.id}
+                    onRowsChange={(nextRows) => {
+                      if (!isReviewEditable) {
+                        return;
+                      }
 
-                    const normalizedRows = nextRows.map(normalizeReviewRow);
-                    const autoSwitchedCurrency = nextRows.some((row, index) => row.currencyCode === 'MXN' && normalizedRows[index]?.currencyCode === 'USD');
+                      const normalizedRows = nextRows.map(normalizeReviewRow);
+                      const autoSwitchedCurrency = nextRows.some((row, index) => row.currencyCode === 'MXN' && normalizedRows[index]?.currencyCode === 'USD');
 
-                    setRows(normalizedRows);
+                      setRows(normalizedRows);
 
-                    if (autoSwitchedCurrency) {
-                      setFeedback(FX_AUTO_SWITCH_FEEDBACK);
-                    }
-                  }}
-                  onCellClick={(args) => {
-                    if (isReviewEditable && args.column.renderEditCell) {
-                      args.selectCell(true);
-                    }
-                  }}
-                  defaultColumnOptions={{ resizable: true }}
-                  style={{ blockSize: 500 }}
-                />
+                      if (autoSwitchedCurrency) {
+                        setFeedback(FX_AUTO_SWITCH_FEEDBACK);
+                      }
+                    }}
+                    onCellClick={(args) => {
+                      if (isReviewEditable && args.column.renderEditCell) {
+                        args.selectCell(true);
+                      }
+                    }}
+                    defaultColumnOptions={{ resizable: true }}
+                    style={{ blockSize: 500 }}
+                  />
+                </GridEditorNavigationProvider>
               </div>
             </>
           )}
