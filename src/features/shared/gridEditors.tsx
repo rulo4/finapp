@@ -142,6 +142,7 @@ type AppSelectProps = {
   placeholder?: string;
   isSearchable?: boolean;
   onBlur?: () => void;
+  onKeyDown?: React.KeyboardEventHandler;
   autoFocus?: boolean;
   instanceRef?: Ref<SelectInstance<SelectOption, false>>;
   compact?: boolean;
@@ -156,6 +157,7 @@ export function AppSelect({
   placeholder,
   isSearchable = true,
   onBlur,
+  onKeyDown,
   autoFocus = false,
   instanceRef,
   compact = false,
@@ -174,6 +176,7 @@ export function AppSelect({
       value={selectedOption}
       onChange={(option) => onChange(option?.value ?? '')}
       onBlur={onBlur}
+      onKeyDown={onKeyDown}
       placeholder={placeholder}
       isSearchable={isSearchable}
       isDisabled={isDisabled}
@@ -213,13 +216,13 @@ export function InputCellEditor<TRow extends EditorRow>({
     skipBlurCloseRef.current = true;
     onClose(true, true);
 
-    queueMicrotask(() => {
+    window.setTimeout(() => {
       navigateToNextCell?.({
         rowIdx,
         columnIdx: column.idx,
         columnKey: String(column.key),
       });
-    });
+    }, 0);
   }
 
   function closeEditorDeferred(shouldCommit: boolean) {
@@ -313,11 +316,32 @@ export function SelectCellEditor<TRow extends EditorRow>({
   options,
 }: SelectCellEditorProps<TRow>) {
   const selectRef = useRef<SelectInstance<SelectOption, false>>(null);
+  const skipBlurCloseRef = useRef(false);
+  const pendingNavigateRef = useRef(false);
   const key = column.key as keyof TRow;
   const navigateToNextCell = useGridEditorNavigation();
 
+  function commitAndNavigateToNextCell() {
+    if (skipBlurCloseRef.current) {
+      return;
+    }
+
+    skipBlurCloseRef.current = true;
+    onClose(true, true);
+
+    window.setTimeout(() => {
+      navigateToNextCell?.({
+        rowIdx,
+        columnIdx: column.idx,
+        columnKey: String(column.key),
+      });
+    }, 0);
+  }
+
   useEffect(() => {
-    selectRef.current?.focus();
+    window.setTimeout(() => {
+      selectRef.current?.focus();
+    }, 0);
   }, []);
 
   return (
@@ -329,18 +353,33 @@ export function SelectCellEditor<TRow extends EditorRow>({
       compact
       autoFocus
       onChange={(nextValue) => {
+        pendingNavigateRef.current = false;
         onRowChange({ ...row, [key]: nextValue } as TRow, true);
-        onClose(true, true);
-
-        queueMicrotask(() => {
-          navigateToNextCell?.({
-            rowIdx,
-            columnIdx: column.idx,
-            columnKey: String(column.key),
-          });
-        });
+        commitAndNavigateToNextCell();
       }}
-      onBlur={() => onClose(true, true)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter') {
+          pendingNavigateRef.current = true;
+        }
+
+        if (event.key === 'Escape') {
+          skipBlurCloseRef.current = true;
+          onClose(false, true);
+        }
+      }}
+      onBlur={() => {
+        if (skipBlurCloseRef.current) {
+          return;
+        }
+
+        if (pendingNavigateRef.current) {
+          pendingNavigateRef.current = false;
+          commitAndNavigateToNextCell();
+          return;
+        }
+
+        onClose(true, true);
+      }}
     />
   );
 }
