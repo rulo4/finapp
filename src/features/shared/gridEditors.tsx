@@ -214,7 +214,7 @@ export function InputCellEditor<TRow extends EditorRow>({
 
   function commitAndNavigateToNextCell() {
     skipBlurCloseRef.current = true;
-    onClose(true, true);
+    onClose(true, false);
 
     window.setTimeout(() => {
       navigateToNextCell?.({
@@ -327,7 +327,7 @@ export function SelectCellEditor<TRow extends EditorRow>({
     }
 
     skipBlurCloseRef.current = true;
-    onClose(true, true);
+    onClose(true, false);
 
     window.setTimeout(() => {
       navigateToNextCell?.({
