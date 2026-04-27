@@ -259,7 +259,7 @@ export function TicketsPage() {
           return (
             <div className={`grid-actions ticket-grid-actions grid-actions--${actionCount}`}>
               <Link
-                to={`/tickets/scan?ticket=${row.id}`}
+                to={`/spending/scan?ticket=${row.id}`}
                 className="grid-action grid-action--ticket"
                 aria-label={row.status === 'saved' ? 'Ver ticket' : row.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
                 title={row.status === 'saved' ? 'Ver ticket' : row.status === 'processed' ? 'Revisar ticket' : 'Abrir ticket'}
@@ -351,7 +351,7 @@ export function TicketsPage() {
           <span className="status-pill status-pill--checking">{pendingSaveCount} listos para guardar</span>
           <span className="status-pill status-pill--ok">{savedCount} guardados</span>
           <Link
-            to="/tickets/scan"
+            to="/spending/scan"
             className="tickets-button tickets-button--primary tickets-button--icon"
             aria-label="Escanear ticket"
             title="Escanear ticket"

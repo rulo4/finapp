@@ -1282,7 +1282,7 @@ export function ExpensesPage() {
                   {row.ticketId ? (
                     <Link
                       className="grid-action grid-action--ticket"
-                      to={`/tickets/scan?ticket=${row.ticketId}`}
+                      to={`/spending/scan?ticket=${row.ticketId}`}
                       title="Ver ticket"
                       aria-label="Ver ticket"
                       onClick={(event) => {
