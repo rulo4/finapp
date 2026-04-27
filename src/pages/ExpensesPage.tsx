@@ -1,24 +1,22 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
 import {
   AppSelect,
   FX_AUTO_SWITCH_FEEDBACK,
-  InputCellEditor,
-  SelectCellEditor,
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../features/shared/gridEditors';
-import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import {
   getStartOfCurrentMonthIsoDate,
   getStartOfCurrentYearIsoDate,
   getTodayIsoDate,
   isIsoDateString,
 } from '../features/shared/isoDate';
+import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type ExpenseCategory = {
@@ -554,15 +552,36 @@ export function ExpensesPage() {
     storeId: '',
   });
   const [calculatorExpression, setCalculatorExpression] = useState('');
-  const [calculatorCopyState, setCalculatorCopyState] = useState<'idle' | 'copied' | 'error'>('idle');
+  const [isSubtotalCalculatorOpen, setIsSubtotalCalculatorOpen] = useState(false);
+  const [activeExpenseId, setActiveExpenseId] = useState<string | null>(null);
+  const [mobilePrimaryPanel, setMobilePrimaryPanel] = useState<'capture' | 'history'>('capture');
   const rowsRef = useRef<ExpenseGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, ExpenseGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
-  const autoEditCellRef = useRef<string | null>(null);
+  const isNarrowViewport = useMediaQuery('(max-width: 720px)');
 
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
+
+  useEffect(() => {
+    if (rows.length === 0) {
+      if (activeExpenseId !== null) {
+        setActiveExpenseId(null);
+      }
+      return;
+    }
+
+    if (activeExpenseId && rows.some((row) => row.id === activeExpenseId)) {
+      return;
+    }
+
+    setActiveExpenseId(rows.find((row) => row.isDraft)?.id ?? rows[0]?.id ?? null);
+  }, [activeExpenseId, rows]);
+
+  useEffect(() => {
+    setIsSubtotalCalculatorOpen(false);
+  }, [activeExpenseId]);
 
   const activeDateRange = useMemo(() => {
     if (dateFilterMode === 'month') {
@@ -646,6 +665,7 @@ export function ExpensesPage() {
     setStores((storesResult.data as Store[]) ?? []);
     setUnitsOfMeasure((unitsResult.data as UnitOfMeasure[]) ?? []);
     setRows(loadedRows);
+      setActiveExpenseId(loadedRows.find((row) => row.isDraft)?.id ?? loadedRows[0]?.id ?? null);
     setFeedback(null);
     setIsLoading(false);
   }, [activeDateRange]);
@@ -827,9 +847,10 @@ export function ExpensesPage() {
         persistedRowsRef.current.delete(rowId);
       }
 
+      const wasDraft = row.isDraft;
+
       setRows((currentRows) => {
         let nextRows: ExpenseGridRow[];
-        const currentRowIndex = currentRows.findIndex((candidate) => candidate.id === rowId);
 
         if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
           nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== rowId));
@@ -838,6 +859,7 @@ export function ExpensesPage() {
         }
 
         rowsRef.current = nextRows;
+        setActiveExpenseId(wasDraft ? (nextRows.find((candidate) => candidate.isDraft)?.id ?? savedRow.id) : savedRow.id);
         return nextRows;
       });
 
@@ -852,6 +874,7 @@ export function ExpensesPage() {
         setRows((currentRows) => {
           const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
           rowsRef.current = nextRows;
+          setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
           return nextRows;
         });
         setFeedback('Fila de captura reiniciada.');
@@ -878,6 +901,7 @@ export function ExpensesPage() {
       setRows((currentRows) => {
         const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
         rowsRef.current = nextRows;
+        setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
         return nextRows;
       });
       setFeedback('Egreso eliminado correctamente.');
@@ -890,6 +914,7 @@ export function ExpensesPage() {
       setRows((currentRows) => {
         const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
         rowsRef.current = nextRows;
+        setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
         return nextRows;
       });
       setFeedback('Fila de captura reiniciada.');
@@ -905,9 +930,30 @@ export function ExpensesPage() {
     setRows((currentRows) => {
       const nextRows = withExpenseDraftRow(currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate)));
       rowsRef.current = nextRows;
+      setActiveExpenseId(persistedRow.id);
       return nextRows;
     });
     setFeedback('Se restauraron los últimos valores guardados de la fila.');
+  }, []);
+
+  const handleDuplicateRow = useCallback((row: ExpenseGridRow) => {
+    const duplicatedRow = normalizeExpenseGridRow({
+      ...row,
+      id: createLocalId('expense-draft'),
+      persistedId: null,
+      isDraft: true,
+      status: 'new',
+      errorMessage: null,
+      ticketId: null,
+    });
+
+    setRows((currentRows) => {
+      const nextRows = [duplicatedRow, ...currentRows.filter((candidate) => !candidate.isDraft)];
+      rowsRef.current = nextRows;
+      setActiveExpenseId(duplicatedRow.id);
+      return nextRows;
+    });
+    setFeedback('Se duplicó el egreso en una nueva fila de captura.');
   }, []);
 
   const categoryOptions = useMemo<readonly SelectOption[]>(
@@ -1010,6 +1056,12 @@ export function ExpensesPage() {
       tableFilters.paymentInstrumentId ||
       tableFilters.storeId,
   );
+  const activeExpenseRow = useMemo(
+    () => rows.find((row) => row.id === activeExpenseId) ?? rows.find((row) => row.isDraft) ?? null,
+    [activeExpenseId, rows],
+  );
+  const activeExpenseTitle = activeExpenseRow?.isDraft ? 'Nuevo egreso' : 'Editar egreso';
+  const currentDraftRow = useMemo(() => rows.find((row) => row.isDraft) ?? null, [rows]);
 
   function resetTableFilters() {
     setTableFilters({
@@ -1265,8 +1317,6 @@ export function ExpensesPage() {
         width: DATE_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderDateHeaderCell,
-        editable: (row) => canEditExpenseColumn(row, 'entryDate'),
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="iso-date" />,
       },
       {
         key: 'concept',
@@ -1274,26 +1324,22 @@ export function ExpensesPage() {
         width: CONCEPT_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderConceptHeaderCell,
-        renderEditCell: (props) => <InputCellEditor {...props} placeholder="Supermercado, renta, gasolina" />,
       },
       {
         key: 'quantity',
         name: 'Cantidad',
         width: QUANTITY_COLUMN_WIDTH,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="Cantidad" />,
       },
       {
         key: 'unitOfMeasureId',
         name: 'U de medida',
         width: UNIT_COLUMN_WIDTH,
         renderCell: ({ row }) => unitLabelById.get(row.unitOfMeasureId) ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={unitOptions} />,
       },
       {
         key: 'subtotalOriginal',
         name: 'Subtotal',
         width: SUBTOTAL_COLUMN_WIDTH,
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0.00" />,
       },
       {
         key: 'categoryId',
@@ -1302,7 +1348,6 @@ export function ExpensesPage() {
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderCategoryHeaderCell,
         renderCell: ({ row }) => categoryLabelById.get(row.categoryId) ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
       {
         key: 'paymentInstrumentId',
@@ -1310,9 +1355,7 @@ export function ExpensesPage() {
         width: PAYMENT_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderPaymentInstrumentHeaderCell,
-        editable: (row) => canEditExpenseColumn(row, 'paymentInstrumentId'),
         renderCell: ({ row }) => paymentInstrumentLabelById.get(row.paymentInstrumentId) ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={paymentInstrumentOptions} />,
       },
       {
         key: 'storeId',
@@ -1320,22 +1363,18 @@ export function ExpensesPage() {
         width: STORE_COLUMN_WIDTH,
         headerCellClass: 'grid-header-filter-cell',
         renderHeaderCell: renderStoreHeaderCell,
-        editable: (row) => canEditExpenseColumn(row, 'storeId'),
         renderCell: ({ row }) => storeLabelById.get(row.storeId) ?? '-',
-        renderEditCell: (props) => <SelectCellEditor {...props} options={storeOptions} />,
       },
       {
         key: 'currencyCode',
         name: 'Moneda',
         width: CURRENCY_COLUMN_WIDTH,
-        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'fxRateToMxn',
         name: 'FX a MXN',
         width: FX_COLUMN_WIDTH,
         renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
-        renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1.000000" />,
       },
       {
         key: 'totalAmountMxn',
@@ -1347,7 +1386,6 @@ export function ExpensesPage() {
         key: 'notes',
         name: 'Notas',
         width: NOTES_COLUMN_WIDTH,
-        renderEditCell: (props) => <InputCellEditor {...props} placeholder="Observaciones opcionales" />,
       },
     ],
     [
@@ -1370,10 +1408,8 @@ export function ExpensesPage() {
       renderStoreHeaderCell,
       storeFilterOptions,
       storeLabelById,
-      storeOptions,
       tableFilters.categoryId,
       unitLabelById,
-      unitOptions,
     ],
   );
 
@@ -1395,72 +1431,12 @@ export function ExpensesPage() {
       error: null as string | null,
     };
   }, [calculatorExpression]);
-
-  const handleCopyCalculatorResult = useCallback(async () => {
-    if (calculatorResult.numericValue == null) {
-      setCalculatorCopyState('error');
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(calculatorResult.displayValue);
-      setCalculatorCopyState('copied');
-      window.setTimeout(() => {
-        setCalculatorCopyState('idle');
-      }, 1200);
-    } catch {
-      setCalculatorCopyState('error');
-    }
-  }, [calculatorResult.displayValue, calculatorResult.numericValue]);
+  const showCapturePanel = !isNarrowViewport || mobilePrimaryPanel === 'capture';
+  const showHistoryPanel = !isNarrowViewport || mobilePrimaryPanel === 'history';
 
   function handleSelectDateFilter(nextMode: ExpenseDateFilterMode) {
     setDateFilterMode(nextMode);
   }
-
-  function handleRowsChange(nextRows: ExpenseGridRow[], data: { indexes: number[] }) {
-    const nextVisibleRowsById = new Map(nextRows.map((row) => [row.id, row]));
-    const mergedRows = rowsRef.current.map((row) => nextVisibleRowsById.get(row.id) ?? row);
-    const updatedVisibleRow = data.indexes[0] == null ? null : nextRows[data.indexes[0]];
-    const updatedRowIndex = updatedVisibleRow
-      ? mergedRows.findIndex((row) => row.id === updatedVisibleRow.id)
-      : null;
-
-    commitExpenseRows(mergedRows, updatedRowIndex != null && updatedRowIndex >= 0 ? updatedRowIndex : null);
-  }
-
-  function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
-    const cellId = `${rowIdx}:${columnKey}`;
-
-    if (autoEditCellRef.current === cellId) {
-      return;
-    }
-
-    autoEditCellRef.current = cellId;
-
-    window.setTimeout(() => {
-      gridRef.current?.selectCell({ rowIdx, idx: columnIdx }, { enableEditor: true, shouldFocusCell: true });
-
-      window.setTimeout(() => {
-        if (autoEditCellRef.current === cellId) {
-          autoEditCellRef.current = null;
-        }
-      }, 0);
-    }, 0);
-  }
-
-  const handleNavigateToNextCell = useCallback(
-    ({ rowIdx, columnIdx }: { rowIdx: number; columnIdx: number }) => {
-      moveToNextEditableGridCell({
-        gridRef,
-        columns,
-        rows: visibleRows,
-        rowIdx,
-        columnIdx,
-        isCellEditable: ({ row, column }) => Boolean(column.renderEditCell) && canEditExpenseColumn(row, column.key),
-      });
-    },
-    [columns, visibleRows],
-  );
 
   return (
     <div className="page">
@@ -1506,76 +1482,340 @@ export function ExpensesPage() {
         {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
-        <div className="grid-wrapper grid-wrapper--tall">
-          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
-            <DataGrid
-              ref={gridRef}
-              columns={columns}
-              rows={visibleRows}
-              rowHeight={GRID_ROW_HEIGHT}
-              headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
-              rowKeyGetter={(row) => row.id}
-              onRowsChange={handleRowsChange}
-              onCellClick={(args) => {
-                if (args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
-                  args.selectCell(true);
-                }
-              }}
-              onSelectedCellChange={(args) => {
-                if (args.row && args.column.renderEditCell && canEditExpenseColumn(args.row, args.column.key)) {
-                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-                }
-              }}
-              defaultColumnOptions={{ resizable: true }}
-              rowClass={(row) => {
-                if (row.status === 'saving') return 'row-saving';
-                if (row.status === 'error') return 'row-error';
-                if (row.status === 'new') return 'row-new';
-                if (row.status === 'dirty') return 'row-dirty';
-                return 'row-saved';
-              }}
-              style={{ blockSize: 500 }}
-            />
-          </GridEditorNavigationProvider>
-        </div>
-
-        <div className="expense-helper-panel" aria-label="Calculadora rápida de subtotal">
-          <div className="mini-calculator">
-            <input
-              type="text"
-              className="mini-calculator__input"
-              value={calculatorExpression}
-              onChange={(event) => {
-                setCalculatorExpression(event.target.value);
-                setCalculatorCopyState('idle');
-              }}
-              placeholder="calculadora"
-              aria-label="Expresion aritmetica"
-              spellCheck={false}
-            />
-            <span className={`mini-calculator__result${calculatorResult.error ? ' mini-calculator__result--error' : ''}`}>
-              {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
-            </span>
+        {isNarrowViewport ? (
+          <div className="expense-workspace-toggle" role="tablist" aria-label="Cambiar vista de egresos">
             <button
               type="button"
-              className="mini-calculator__copy"
-              aria-label="Copiar resultado"
-              title={
-                calculatorCopyState === 'copied'
-                  ? 'Resultado copiado'
-                  : calculatorCopyState === 'error'
-                    ? 'No se pudo copiar el resultado'
-                    : 'Copiar resultado'
-              }
-              onClick={() => {
-                void handleCopyCalculatorResult();
-              }}
-              disabled={calculatorResult.numericValue == null}
+              role="tab"
+              aria-selected={mobilePrimaryPanel === 'capture'}
+              className={`expense-workspace-toggle__button${mobilePrimaryPanel === 'capture' ? ' expense-workspace-toggle__button--active' : ''}`}
+              onClick={() => setMobilePrimaryPanel('capture')}
             >
-              <FontAwesomeIcon icon={faCopy} />
+              Captura
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mobilePrimaryPanel === 'history'}
+              className={`expense-workspace-toggle__button${mobilePrimaryPanel === 'history' ? ' expense-workspace-toggle__button--active' : ''}`}
+              onClick={() => setMobilePrimaryPanel('history')}
+            >
+              Historial
             </button>
           </div>
-        </div>
+        ) : null}
+
+        {showCapturePanel && activeExpenseRow ? (
+          <section className="expense-entry-editor" aria-label="Editor de egreso activo">
+            <div className="expense-entry-editor__header">
+              <div className="expense-entry-editor__title">
+                <strong>{activeExpenseTitle}</strong>
+              </div>
+            </div>
+
+            <div className="finance-form expense-entry-editor__form">
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--date">
+                <span>Fecha</span>
+                <AppDatePicker
+                  value={activeExpenseRow.entryDate}
+                  ariaLabel="Fecha del egreso"
+                  disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { entryDate: value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--concept">
+                <span>Concepto</span>
+                <input
+                  type="text"
+                  value={activeExpenseRow.concept}
+                  placeholder="Supermercado, renta, gasolina"
+                  onChange={(event) => {
+                    updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity">
+                <span>Cantidad</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={activeExpenseRow.quantity}
+                  onChange={(event) => {
+                    updateExpenseRow(activeExpenseRow.id, { quantity: event.target.value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--unit">
+                <span>Unidad</span>
+                <AppSelect
+                  ariaLabel="Unidad de medida del egreso"
+                  options={unitOptions}
+                  value={activeExpenseRow.unitOfMeasureId}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--subtotal">
+                <span>Subtotal</span>
+                <div className="expense-entry-editor__subtotal-row">
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={activeExpenseRow.subtotalOriginal}
+                    onChange={(event) => {
+                      updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: event.target.value });
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className={`expense-entry-editor__calculator-toggle${isSubtotalCalculatorOpen ? ' expense-entry-editor__calculator-toggle--active' : ''}`}
+                    aria-label="Abrir calculadora de subtotal"
+                    title="Calculadora"
+                    onClick={() => {
+                      setIsSubtotalCalculatorOpen((currentValue) => !currentValue);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faCalculator} />
+                  </button>
+                </div>
+                {isSubtotalCalculatorOpen ? (
+                  <div className="expense-entry-editor__calculator" aria-label="Calculadora de subtotal">
+                    <input
+                      type="text"
+                      className="expense-entry-editor__calculator-input"
+                      value={calculatorExpression}
+                      onChange={(event) => {
+                        setCalculatorExpression(event.target.value);
+                      }}
+                      placeholder="2+3*10"
+                      aria-label="Expresión aritmética"
+                      spellCheck={false}
+                    />
+                    <span className={`expense-entry-editor__calculator-result${calculatorResult.error ? ' expense-entry-editor__calculator-result--error' : ''}`}>
+                      {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
+                    </span>
+                    <button
+                      type="button"
+                      className="expense-entry-editor__calculator-apply"
+                      disabled={calculatorResult.numericValue == null}
+                      onClick={() => {
+                        if (calculatorResult.numericValue == null) {
+                          return;
+                        }
+
+                        updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: calculatorResult.displayValue });
+                        setIsSubtotalCalculatorOpen(false);
+                      }}
+                    >
+                      Usar
+                    </button>
+                  </div>
+                ) : null}
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--category">
+                <span>Categoría</span>
+                <AppSelect
+                  ariaLabel="Categoría del egreso"
+                  options={categoryOptions}
+                  value={activeExpenseRow.categoryId}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { categoryId: value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--payment">
+                <span>Pago con</span>
+                <AppSelect
+                  ariaLabel="Instrumento de pago del egreso"
+                  options={paymentInstrumentOptions}
+                  value={activeExpenseRow.paymentInstrumentId}
+                  isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--store">
+                <span>Tienda</span>
+                <AppSelect
+                  ariaLabel="Tienda del egreso"
+                  options={storeOptions}
+                  value={activeExpenseRow.storeId}
+                  isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { storeId: value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--currency">
+                <span>Moneda</span>
+                <AppSelect
+                  ariaLabel="Moneda del egreso"
+                  options={currencyOptions}
+                  value={activeExpenseRow.currencyCode}
+                  onChange={(value) => {
+                    updateExpenseRow(activeExpenseRow.id, { currencyCode: value as 'MXN' | 'USD' });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--fx">
+                <span>FX</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.000001"
+                  value={activeExpenseRow.currencyCode === 'MXN' ? '1' : activeExpenseRow.fxRateToMxn}
+                  disabled={activeExpenseRow.currencyCode === 'MXN'}
+                  onChange={(event) => {
+                    updateExpenseRow(activeExpenseRow.id, { fxRateToMxn: event.target.value });
+                  }}
+                />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--total">
+                <span>Total MXN</span>
+                <input type="text" value={activeExpenseRow.totalAmountMxn} disabled readOnly />
+              </label>
+
+              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--notes">
+                <span>Notas</span>
+                <input
+                  type="text"
+                  value={activeExpenseRow.notes}
+                  placeholder="Opcional"
+                  onChange={(event) => {
+                    updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
+                  }}
+                />
+              </label>
+            </div>
+
+            <div className="expense-entry-editor__footer">
+              <div className="expense-entry-editor__actions">
+                <button
+                  type="button"
+                  className="expense-entry-editor__action expense-entry-editor__action--save"
+                  aria-label="Guardar egreso"
+                  title="Guardar"
+                  onClick={() => {
+                    void persistExpenseRow(activeExpenseRow.id);
+                  }}
+                >
+                  <FontAwesomeIcon icon={faFloppyDisk} />
+                </button>
+                {activeExpenseRow.isDraft ? (
+                  <button
+                    type="button"
+                    className="expense-entry-editor__action expense-entry-editor__action--clear"
+                    aria-label="Limpiar captura"
+                    title="Limpiar"
+                    onClick={() => {
+                      handleRevertRow(activeExpenseRow);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faEraser} />
+                  </button>
+                ) : (
+                  <>
+                    <button
+                      type="button"
+                      className="expense-entry-editor__action expense-entry-editor__action--duplicate"
+                      aria-label="Duplicar egreso"
+                      title="Duplicar"
+                      onClick={() => {
+                        handleDuplicateRow(activeExpenseRow);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCopy} />
+                    </button>
+                    <button
+                      type="button"
+                      className="expense-entry-editor__action expense-entry-editor__action--revert"
+                      aria-label="Deshacer cambios"
+                      title="Deshacer"
+                      onClick={() => {
+                        handleRevertRow(activeExpenseRow);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faRotateLeft} />
+                    </button>
+                    <button
+                      type="button"
+                      className="expense-entry-editor__action expense-entry-editor__action--delete"
+                      aria-label="Eliminar egreso"
+                      title="Eliminar"
+                      onClick={() => {
+                        void handleDeleteRow(activeExpenseRow);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faTrash} />
+                    </button>
+                  </>
+                )}
+                {currentDraftRow && currentDraftRow.id !== activeExpenseRow.id ? (
+                  <button
+                    type="button"
+                    className="expense-entry-editor__action expense-entry-editor__action--clear"
+                    aria-label="Ir a nueva captura"
+                    title="Nueva captura"
+                    onClick={() => {
+                      setActiveExpenseId(currentDraftRow.id);
+                    }}
+                  >
+                    <FontAwesomeIcon icon={faReceipt} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          </section>
+        ) : null}
+
+        {showHistoryPanel ? (
+          <div className="grid-wrapper grid-wrapper--tall">
+          <DataGrid
+            ref={gridRef}
+            columns={columns}
+            rows={visibleRows}
+            rowHeight={GRID_ROW_HEIGHT}
+            headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
+            rowKeyGetter={(row) => row.id}
+            onCellClick={(args) => {
+              if (args.row) {
+                setActiveExpenseId(args.row.id);
+                if (isNarrowViewport) {
+                  setMobilePrimaryPanel('capture');
+                }
+              }
+            }}
+            defaultColumnOptions={{ resizable: true }}
+            rowClass={(row) => {
+              const classNames: string[] = [];
+              if (row.status === 'saving') classNames.push('row-saving');
+              else if (row.status === 'error') classNames.push('row-error');
+              else if (row.status === 'new') classNames.push('row-new');
+              else if (row.status === 'dirty') classNames.push('row-dirty');
+              else classNames.push('row-saved');
+              if (row.id === activeExpenseRow?.id) classNames.push('row-selected-soft');
+              return classNames.join(' ');
+            }}
+            style={{ blockSize: 500 }}
+          />
+          </div>
+        ) : null}
 
       </section>
     </div>

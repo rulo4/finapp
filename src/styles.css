@@ -1785,36 +1785,286 @@ textarea {
   border-bottom: 2px solid #dbeafe;
 }
 
-.mini-calculator {
-  display: grid;
-  grid-template-columns: minmax(15ch, 17ch) auto 36px;
-  align-items: center;
-  gap: 8px;
-  justify-content: start;
-}
-
-.expense-helper-panel {
-  display: grid;
-  gap: 10px;
-  padding: 12px;
+.expense-workspace-toggle {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
   border: 1px solid #e5e7eb;
-  border-radius: 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border-radius: 12px;
+  background: #f8fafc;
 }
 
-.expense-helper-panel__header {
+.expense-workspace-toggle__button {
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: #475569;
+  font-size: 0.84rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.expense-workspace-toggle__button--active {
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);
+}
+
+.expense-entry-editor {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dbe5f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.expense-entry-editor__header {
+  display: grid;
+  gap: 4px;
+}
+
+.expense-entry-editor__title {
   display: grid;
   gap: 2px;
 }
 
-.expense-helper-panel__header strong {
+.expense-entry-editor__title strong {
   color: #0f172a;
-  font-size: 0.95rem;
+  font-size: 0.9rem;
 }
 
-.expense-helper-panel__header span {
-  color: #64748b;
-  font-size: 0.85rem;
+.expense-entry-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.expense-entry-editor__footer {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.expense-entry-editor__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+  color: #475569;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.expense-entry-editor__action:hover {
+  transform: translateY(-1px);
+}
+
+.expense-entry-editor__action--save {
+  background: #eefbf3;
+  border-color: #cfe8d8;
+  color: #2f6b4f;
+}
+
+.expense-entry-editor__action--duplicate {
+  background: #eef4ff;
+  border-color: #cdddff;
+  color: #2753a5;
+}
+
+.expense-entry-editor__action--revert {
+  background: #fff8e8;
+  border-color: #eeddb4;
+  color: #8a6230;
+}
+
+.expense-entry-editor__action--delete {
+  background: #fff1f1;
+  border-color: #efcaca;
+  color: #a15454;
+}
+
+.expense-entry-editor__action--clear {
+  background: #f4f6f8;
+  border-color: #d9e0e8;
+  color: #5b6776;
+}
+
+.expense-entry-editor__form .catalog-field .app-select__control,
+.expense-entry-editor__form .catalog-field .app-date-picker__input,
+.expense-entry-editor__form .catalog-field input {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.expense-entry-editor__form .catalog-field {
+  font-size: 12px;
+}
+
+.expense-entry-editor__form .catalog-field span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.expense-entry-editor__form {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.expense-entry-editor__field {
+  --expense-field-ch: 10;
+  min-width: 0;
+  inline-size: 100%;
+  max-inline-size: calc(var(--expense-field-ch) * 1ch + 2.75rem);
+}
+
+.expense-entry-editor__field--date {
+  --expense-field-ch: 10;
+  grid-column: span 2;
+}
+
+.expense-entry-editor__field--concept {
+  --expense-field-ch: 25;
+  grid-column: span 4;
+}
+
+.expense-entry-editor__field--quantity {
+  --expense-field-ch: 3;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--unit {
+  --expense-field-ch: 5;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--subtotal {
+  --expense-field-ch: 5;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--currency {
+  --expense-field-ch: 3;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--fx {
+  --expense-field-ch: 3;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--category {
+  --expense-field-ch: 10;
+  grid-column: span 2;
+}
+
+.expense-entry-editor__field--payment {
+  --expense-field-ch: 10;
+  grid-column: span 2;
+}
+
+.expense-entry-editor__field--store {
+  --expense-field-ch: 10;
+  grid-column: span 2;
+}
+
+.expense-entry-editor__field--total {
+  --expense-field-ch: 5;
+  grid-column: span 1;
+}
+
+.expense-entry-editor__field--notes {
+  --expense-field-ch: 25;
+  grid-column: span 4;
+}
+
+.expense-entry-editor__subtotal-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  gap: 8px;
+  align-items: center;
+}
+
+.expense-entry-editor__calculator-toggle {
+  inline-size: 36px;
+  block-size: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #475569;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.expense-entry-editor__calculator-toggle--active {
+  border-color: #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.expense-entry-editor__calculator {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+  padding: 8px;
+  border: 1px solid #dbe5f0;
+  border-radius: 10px;
+  background: #f8fbff;
+}
+
+.expense-entry-editor__calculator-input {
+  min-width: 0;
+  min-height: 36px;
+  padding: 7px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  font-size: 13px;
+}
+
+.expense-entry-editor__calculator-result {
+  min-width: 56px;
+  padding: 7px 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 10px;
+  background: #fff;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.expense-entry-editor__calculator-result--error {
+  color: #b91c1c;
+  border-color: #fecaca;
+  background: #fff1f2;
+}
+
+.expense-entry-editor__calculator-apply {
+  min-height: 36px;
+  padding: 0 10px;
+  border: 1px solid #cfe8d8;
+  border-radius: 10px;
+  background: #eefbf3;
+  color: #2f6b4f;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.expense-entry-editor__calculator-apply:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .mini-calculator__input {
@@ -2081,6 +2331,43 @@ textarea {
 }
 
 @media (max-width: 720px) {
+  .expense-workspace-toggle {
+    inline-size: 100%;
+  }
+
+  .expense-workspace-toggle__button {
+    flex: 1 1 0;
+  }
+
+  .expense-entry-editor__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .expense-entry-editor__field {
+    max-inline-size: none;
+  }
+
+  .expense-entry-editor__field--date,
+  .expense-entry-editor__field--concept,
+  .expense-entry-editor__field--total,
+  .expense-entry-editor__field--notes {
+    grid-column: span 2;
+  }
+
+  .expense-entry-editor__field--category,
+  .expense-entry-editor__field--payment,
+  .expense-entry-editor__field--store {
+    grid-column: span 2;
+  }
+
+  .expense-entry-editor__calculator {
+    grid-template-columns: 1fr;
+  }
+
+  .expense-entry-editor__footer {
+    justify-content: flex-start;
+  }
+
   .credit-cards-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
