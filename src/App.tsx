@@ -1,5 +1,5 @@
 import { Suspense, lazy } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { investmentTabs, spendingTabs } from './config/navigation';
 import { useAuth } from './features/auth/AuthContext';
 import { AuthPage } from './pages/AuthPage';
@@ -27,6 +27,12 @@ function RouteFallback() {
       </section>
     </div>
   );
+}
+
+function LegacySectionRedirect({ to }: { to: string }) {
+  const { search, hash } = useLocation();
+
+  return <Navigate to={{ pathname: to, search, hash }} replace />;
 }
 
 export default function App() {
@@ -162,8 +168,8 @@ export default function App() {
         <Route path="/stocks/sells" element={<Navigate to="/investments/sells" replace />} />
         <Route path="/stocks/holdings" element={<Navigate to="/investments/holdings" replace />} />
         <Route path="/dividends" element={<Navigate to="/investments/dividends" replace />} />
-        <Route path="/tickets" element={<Navigate to="/spending/tickets" replace />} />
-        <Route path="/tickets/scan" element={<Navigate to="/spending/scan" replace />} />
+        <Route path="/tickets" element={<LegacySectionRedirect to="/spending/tickets" />} />
+        <Route path="/tickets/scan" element={<LegacySectionRedirect to="/spending/scan" />} />
         <Route
           path="/catalogs"
           element={
