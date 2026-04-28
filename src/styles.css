@@ -1922,7 +1922,7 @@ textarea {
   --expense-field-ch: 10;
   min-width: 0;
   inline-size: 100%;
-  max-inline-size: calc(var(--expense-field-ch) * 1ch + 2.75rem);
+  max-inline-size: none;
 }
 
 .expense-entry-editor__field--date {
@@ -1947,7 +1947,7 @@ textarea {
 
 .expense-entry-editor__field--subtotal {
   --expense-field-ch: 5;
-  grid-column: span 1;
+  grid-column: span 2;
 }
 
 .expense-entry-editor__field--currency {
@@ -1982,7 +1982,7 @@ textarea {
 
 .expense-entry-editor__field--notes {
   --expense-field-ch: 25;
-  grid-column: span 4;
+  grid-column: span 5;
 }
 
 .expense-entry-editor__subtotal-row {
