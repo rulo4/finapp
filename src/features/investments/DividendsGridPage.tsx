@@ -64,10 +64,12 @@ type DividendGridRow = {
 
 const GRID_ROW_HEIGHT = 30;
 const FILTER_HEADER_ROW_HEIGHT = 64;
-const DEFAULT_COLUMN_WIDTH = 108;
+const DEFAULT_COLUMN_WIDTH = 96;
 const AMOUNT_COLUMN_WIDTH = 96;
 const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 160;
+const BROKER_COLUMN_WIDTH = 76;
+const FX_COLUMN_WIDTH = 72;
 
 function createDraftDividendRow(): DividendGridRow {
   return {
@@ -696,7 +698,7 @@ export function DividendsGridPage() {
     {
       key: 'brokerId',
       name: 'Broker',
-      width: 148,
+      width: BROKER_COLUMN_WIDTH,
       headerCellClass: 'grid-header-filter-cell',
       renderHeaderCell: renderBrokerHeaderCell,
       renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
@@ -723,7 +725,7 @@ export function DividendsGridPage() {
     {
       key: 'fxRateToMxn',
       name: 'FX',
-      width: 86,
+      width: FX_COLUMN_WIDTH,
       renderCell: ({ row }) => (row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn || '-'),
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="1" />,
     },
