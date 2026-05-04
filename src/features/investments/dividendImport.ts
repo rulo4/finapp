@@ -93,8 +93,8 @@ type DividendImportGroup = {
   taxes: DividendImportRawItem[];
 };
 
-const DIVIDEND_SUB_TRANSACTION_TYPE = 2394;
-const TAX_SUB_TRANSACTION_TYPE = 3588;
+const DIVIDEND_SUB_TRANSACTION_TYPES = new Set([1, 266, 974, 2394]);
+const TAX_SUB_TRANSACTION_TYPES = new Set([3336, 3588, 3590]);
 
 function createPreviewRowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -105,11 +105,11 @@ export function normalizeImportedTicker(rawTicker: string) {
 }
 
 export function classifyDividendImportItem(description: string, subTransactionType: number | null) {
-  if (subTransactionType === DIVIDEND_SUB_TRANSACTION_TYPE) {
+  if (subTransactionType != null && DIVIDEND_SUB_TRANSACTION_TYPES.has(subTransactionType)) {
     return 'dividend' as const;
   }
 
-  if (subTransactionType === TAX_SUB_TRANSACTION_TYPE) {
+  if (subTransactionType != null && TAX_SUB_TRANSACTION_TYPES.has(subTransactionType)) {
     return 'tax' as const;
   }
 
@@ -119,11 +119,25 @@ export function classifyDividendImportItem(description: string, subTransactionTy
     return 'ignored' as const;
   }
 
-  if (normalizedDescription.includes('ISR') && normalizedDescription.includes('DIVIDEND')) {
+  if (
+    normalizedDescription.includes('ISR') &&
+    (
+      normalizedDescription.includes('DIVIDEND') ||
+      normalizedDescription.includes('RETENCION') ||
+      normalizedDescription.includes('RESULTADO FISCAL')
+    )
+  ) {
     return 'tax' as const;
   }
 
-  if (normalizedDescription.includes('ABONO') && normalizedDescription.includes('DIVIDEND')) {
+  if (
+    normalizedDescription.includes('ABONO') &&
+    (
+      normalizedDescription.includes('DIVIDEND') ||
+      normalizedDescription.includes('REEMBOLSO DE CAPITAL') ||
+      normalizedDescription.includes('RESULTADO FISCAL')
+    )
+  ) {
     return 'dividend' as const;
   }
 
