@@ -37,6 +37,10 @@ type DuplicateTaxSourceRow = {
 };
 
 const PREVIEW_ROW_HEIGHT = 30;
+const PREVIEW_DATE_COLUMN_WIDTH = 96;
+const PREVIEW_TICKER_COLUMN_WIDTH = 96;
+const PREVIEW_BROKER_COLUMN_WIDTH = 76;
+const PREVIEW_FX_COLUMN_WIDTH = 72;
 
 function getImportStatusTone(status: DividendImportPreviewRow['status']) {
   if (status === 'ready' || status === 'saved') return 'ok';
@@ -460,12 +464,12 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
       {
         key: 'entryDate',
         name: 'Fecha',
-        width: 108,
+        width: PREVIEW_DATE_COLUMN_WIDTH,
       },
       {
         key: 'rawTicker',
         name: 'Ticker origen',
-        width: 108,
+        width: PREVIEW_TICKER_COLUMN_WIDTH,
       },
       {
         key: 'matchedSecurityId',
@@ -477,7 +481,7 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
       {
         key: 'brokerId',
         name: 'Broker',
-        width: 148,
+        width: PREVIEW_BROKER_COLUMN_WIDTH,
         renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
       },
       {
@@ -488,7 +492,7 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
       {
         key: 'fxRateToMxn',
         name: 'FX',
-        width: 82,
+        width: PREVIEW_FX_COLUMN_WIDTH,
       },
       {
         key: 'grossAmountOriginal',
@@ -520,6 +524,12 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
         name: 'Id ISR',
         width: 116,
         renderCell: ({ row }) => row.sourceTaxTransactionId || '-',
+      },
+      {
+        key: 'dividendDescription',
+        name: 'Descripcion abono',
+        width: 280,
+        renderCell: ({ row }) => row.dividendDescription || '-',
       },
       {
         key: 'issues',

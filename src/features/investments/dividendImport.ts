@@ -65,6 +65,7 @@ export type DividendImportPreviewRow = {
   entryDate: string;
   rawTicker: string;
   normalizedTicker: string;
+  dividendDescription: string;
   matchedSecurityId: string;
   brokerId: string;
   currencyCode: DividendImportCurrencyCode;
@@ -95,6 +96,7 @@ type DividendImportGroup = {
 
 const DIVIDEND_SUB_TRANSACTION_TYPES = new Set([1, 266, 974, 2394]);
 const TAX_SUB_TRANSACTION_TYPES = new Set([3336, 3588, 3590]);
+const CAPITAL_RETURN_SUB_TRANSACTION_TYPE = 266;
 
 function createPreviewRowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -142,6 +144,35 @@ export function classifyDividendImportItem(description: string, subTransactionTy
   }
 
   return 'ignored' as const;
+}
+
+function getDividendImportPairingBucket(item: Pick<DividendImportRawItem, 'kind' | 'subTransactionType'>) {
+  if (item.kind === 'tax') {
+    return 'taxed' as const;
+  }
+
+  if (item.subTransactionType === CAPITAL_RETURN_SUB_TRANSACTION_TYPE) {
+    return 'no-tax' as const;
+  }
+
+  return 'taxed' as const;
+}
+
+function getDividendImportGroupKey(item: DividendImportRawItem) {
+  const pairingDate = item.settlementDate || item.entryDate;
+  const pairingBucket = getDividendImportPairingBucket(item);
+
+  if (pairingBucket === 'no-tax') {
+    return {
+      pairingDate,
+      key: `${item.contractKey}::${item.normalizedTicker}::${pairingDate}::${pairingBucket}::${item.sourceTransactionId}`,
+    };
+  }
+
+  return {
+    pairingDate,
+    key: `${item.contractKey}::${item.normalizedTicker}::${pairingDate}::${pairingBucket}`,
+  };
 }
 
 export function buildSecurityOptionLookup(securities: Security[]) {
@@ -223,8 +254,8 @@ export function parseDividendImportFile(
 
   for (const item of rawItems) {
     // Taxes can post on a different process date than the dividend, but still share settlement.
-    const pairingDate = item.settlementDate || item.entryDate;
-    const key = `${item.contractKey}::${item.normalizedTicker}::${pairingDate}`;
+    // Capital returns (266) stay separate because they do not carry ISR.
+    const { pairingDate, key } = getDividendImportGroupKey(item);
     const existingGroup = groupedItems.get(key);
 
     if (existingGroup) {
@@ -298,6 +329,7 @@ export function parseDividendImportFile(
         entryDate: displayEntryDate,
         rawTicker: displayRawTicker,
         normalizedTicker: group.normalizedTicker,
+        dividendDescription: dividendItem?.description ?? '',
         matchedSecurityId: matchedSecurityIds[0] ?? '',
         brokerId: config.brokerId,
         currencyCode: config.currencyCode,
