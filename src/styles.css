@@ -1479,6 +1479,132 @@ textarea {
   gap: 12px;
 }
 
+.dividend-import-panel {
+  margin-bottom: 14px;
+}
+
+.dividend-import-panel__empty {
+  display: grid;
+  place-items: center;
+  min-height: 96px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 14px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 0.9rem;
+  text-align: center;
+  padding: 16px;
+}
+
+.dividend-import-editor {
+  display: grid;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #dbe5f0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+.dividend-import-editor__header {
+  display: grid;
+  gap: 10px;
+}
+
+.dividend-import-editor__title {
+  display: grid;
+  gap: 4px;
+}
+
+.dividend-import-editor__title strong {
+  color: #0f172a;
+  font-size: 0.9rem;
+}
+
+.dividend-import-editor__form .catalog-field .app-select__control,
+.dividend-import-editor__form .catalog-field input {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.dividend-import-editor__form .catalog-field {
+  font-size: 12px;
+}
+
+.dividend-import-editor__form .catalog-field span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.dividend-import-editor__form {
+  display: grid;
+  grid-template-columns: minmax(140px, 10ch) minmax(92px, 5ch) minmax(92px, 5ch) minmax(280px, 1fr);
+  gap: 12px;
+  align-items: end;
+}
+
+.dividend-import-editor__field {
+  min-width: 0;
+  inline-size: auto;
+  max-inline-size: none;
+  justify-self: start;
+}
+
+.dividend-import-editor__field--broker {
+  grid-column: 1;
+  inline-size: 100%;
+}
+
+.dividend-import-editor__field--currency {
+  grid-column: 2;
+  inline-size: 100%;
+}
+
+.dividend-import-editor__field--fx {
+  grid-column: 3;
+  inline-size: 100%;
+}
+
+.dividend-import-editor__field--file {
+  grid-column: 4;
+  inline-size: 100%;
+}
+
+.dividend-import-editor__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  grid-column: 1 / span 2;
+  min-width: 0;
+}
+
+.dividend-import-editor__footer {
+  display: flex;
+  justify-content: flex-end;
+  grid-column: 3 / span 2;
+}
+
+.dividend-import-editor__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.dividend-import-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
+.dividend-import-checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
 .income-toolbar {
   display: flex;
   align-items: center;
@@ -1762,6 +1888,10 @@ textarea {
 
 .row-error {
   background: #fff8f8;
+}
+
+.row-duplicate {
+  background: #fffbea;
 }
 
 .rdg-summary-row .rdg-cell {
@@ -2331,6 +2461,37 @@ textarea {
 }
 
 @media (max-width: 720px) {
+  .dividend-import-editor__form {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dividend-import-editor__field--broker,
+  .dividend-import-editor__field--currency,
+  .dividend-import-editor__field--fx,
+  .dividend-import-editor__field--file,
+  .dividend-import-editor__meta,
+  .dividend-import-editor__footer {
+    grid-column: span 2;
+  }
+
+  .dividend-import-editor__field--broker,
+  .dividend-import-editor__field--currency,
+  .dividend-import-editor__field--fx {
+    inline-size: 100%;
+  }
+
+  .dividend-import-editor__field {
+    justify-self: stretch;
+  }
+
+  .dividend-import-editor__footer {
+    justify-content: flex-start;
+  }
+
+  .dividend-import-editor__actions {
+    justify-content: flex-start;
+  }
+
   .expense-workspace-toggle {
     inline-size: 100%;
   }

@@ -30,6 +30,7 @@ import {
   isDateWithinRange,
   isErrorFeedback,
 } from './shared';
+import { DividendImportPanel } from './DividendImportPanel';
 
 type DividendDbRow = {
   id: string;
@@ -777,6 +778,8 @@ export function DividendsGridPage() {
 
   return (
     <div className="page">
+      <DividendImportPanel brokers={brokers} securities={securities} onImported={loadData} />
+
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
