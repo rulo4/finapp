@@ -1600,7 +1600,20 @@ textarea {
   height: 100%;
 }
 
+.ticket-review-checkbox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+}
+
 .dividend-import-checkbox input {
+  width: 16px;
+  height: 16px;
+}
+
+.ticket-review-checkbox input {
   width: 16px;
   height: 16px;
 }
