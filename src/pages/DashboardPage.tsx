@@ -22,12 +22,14 @@ import {
 } from '../lib/supabase/client';
 import { dashboardTabs, type DashboardTabKey } from '../config/navigation';
 import {
-  type InvestmentDateFilterMode,
+  createCurrentInvestmentDateFilter,
+  type InvestmentDateFilter,
   type Security,
   formatCurrencyTotal,
   getDateRange,
   getTodayDate,
 } from '../features/investments/shared';
+import { PeriodFilter } from '../features/shared/PeriodFilter';
 import { summarizeOpenHoldings, type StockBuyMovement, type StockSellMovement } from '../features/investments/positionMetrics';
 
 type IncomeDashboardRow = {
@@ -477,7 +479,7 @@ export function DashboardPage() {
     isSupabaseConfigured() ? 'checking' : 'idle',
   );
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured());
-  const [periodMode, setPeriodMode] = useState<InvestmentDateFilterMode>('month');
+  const [periodFilter, setPeriodFilter] = useState<InvestmentDateFilter>(() => createCurrentInvestmentDateFilter());
   const [chartVariants, setChartVariants] = useState<Record<DashboardTabKey, DashboardChartVariant>>({
     income: 'pie',
     expense: 'pie',
@@ -486,7 +488,7 @@ export function DashboardPage() {
   });
   const [dashboardData, setDashboardData] = useState<DashboardData>(EMPTY_DASHBOARD_DATA);
   const activeTab = dashboardTab ? DASHBOARD_TAB_BY_ROUTE_SEGMENT[dashboardTab] ?? 'income' : 'income';
-  const activePeriod = useMemo(() => getDateRange(periodMode), [periodMode]);
+  const activePeriod = useMemo(() => getDateRange(periodFilter), [periodFilter]);
   const snapshotEndDate = activePeriod.end || getTodayDate();
   const activeChartVariant = chartVariants[activeTab];
   const nextChartVariant = activeChartVariant === 'pie' ? 'bar' : 'pie';
@@ -698,29 +700,7 @@ export function DashboardPage() {
     <div className="page dashboard-page">
       <section className="card dashboard-filters">
         <div className="dashboard-toolbar">
-          <div className="income-period-filter" aria-label="Filtro de periodo del dashboard">
-            <button
-              type="button"
-              className={`income-period-filter__button ${periodMode === 'all' ? 'income-period-filter__button--active' : ''}`}
-              onClick={() => setPeriodMode('all')}
-            >
-              Todo
-            </button>
-            <button
-              type="button"
-              className={`income-period-filter__button ${periodMode === 'month' ? 'income-period-filter__button--active' : ''}`}
-              onClick={() => setPeriodMode('month')}
-            >
-              Este mes
-            </button>
-            <button
-              type="button"
-              className={`income-period-filter__button ${periodMode === 'year' ? 'income-period-filter__button--active' : ''}`}
-              onClick={() => setPeriodMode('year')}
-            >
-              Este año
-            </button>
-          </div>
+          <PeriodFilter ariaLabel="Filtro de periodo del dashboard" value={periodFilter} onChange={setPeriodFilter} disabled={isLoading} />
 
           <button
             type="button"

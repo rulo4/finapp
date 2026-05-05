@@ -1,12 +1,6 @@
 import type { SelectOption } from '../shared/gridEditors';
-import {
-  getEndOfCurrentMonthIsoDate,
-  getEndOfCurrentYearIsoDate,
-  formatLocalDateAsIsoString,
-  getStartOfCurrentMonthIsoDate,
-  getStartOfCurrentYearIsoDate,
-  getTodayIsoDate,
-} from '../shared/isoDate';
+import { getTodayIsoDate } from '../shared/isoDate';
+import { createCurrentPeriodSelection, getPeriodDateRange, type PeriodFilterSelection } from '../shared/PeriodFilter';
 
 export type Broker = {
   id: string;
@@ -31,7 +25,7 @@ export type InvestmentEntity = {
   is_closed: boolean;
 };
 
-export type InvestmentDateFilterMode = 'all' | 'month' | 'year';
+export type InvestmentDateFilter = PeriodFilterSelection;
 
 export const investmentCurrencyOptions: readonly SelectOption[] = [
   { value: 'MXN', label: 'MXN' },
@@ -42,33 +36,15 @@ export function getTodayDate() {
   return getTodayIsoDate();
 }
 
-export function getStartOfCurrentMonth() {
-  return getStartOfCurrentMonthIsoDate();
+export function createCurrentInvestmentDateFilter() {
+  return createCurrentPeriodSelection();
 }
 
-export function getStartOfCurrentYear() {
-  return getStartOfCurrentYearIsoDate();
-}
-
-export function getDateRange(mode: InvestmentDateFilterMode) {
-  if (mode === 'month') {
-    return {
-      start: getStartOfCurrentMonth(),
-      end: getEndOfCurrentMonthIsoDate(),
-    };
-  }
-
-  if (mode === 'year') {
-    return {
-      start: getStartOfCurrentYear(),
-      end: getEndOfCurrentYearIsoDate(),
-    };
-  }
-
-  return {
-    start: '',
-    end: '',
-  };
+export function getDateRange(filter: InvestmentDateFilter) {
+  return getPeriodDateRange(filter, {
+    clampCurrentMonthToToday: true,
+    clampCurrentYearToToday: true,
+  });
 }
 
 export function isDateWithinRange(date: string, range: { start: string; end: string }) {

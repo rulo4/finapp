@@ -11,11 +11,10 @@ import {
   type SelectOption,
 } from '../features/shared/gridEditors';
 import {
-  getStartOfCurrentMonthIsoDate,
-  getStartOfCurrentYearIsoDate,
   getTodayIsoDate,
   isIsoDateString,
 } from '../features/shared/isoDate';
+import { createCurrentPeriodSelection, getPeriodDateRange, type PeriodFilterSelection, PeriodFilter } from '../features/shared/PeriodFilter';
 import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
@@ -88,8 +87,6 @@ type ExpenseGridRow = {
   notes: string;
 };
 
-type ExpenseDateFilterMode = 'all' | 'month' | 'year';
-
 type ExpenseTableFilters = {
   entryDate: string;
   concept: string;
@@ -113,14 +110,6 @@ function normalizeExpenseEntry(row: ExpenseEntryRow): ExpenseEntry {
 
 function getTodayDate() {
   return getTodayIsoDate();
-}
-
-function getStartOfCurrentMonth() {
-  return getStartOfCurrentMonthIsoDate();
-}
-
-function getStartOfCurrentYear() {
-  return getStartOfCurrentYearIsoDate();
 }
 
 function isDateWithinRange(date: string, range: { start: string; end: string }) {
@@ -543,7 +532,7 @@ export function ExpensesPage() {
   const [rows, setRows] = useState<ExpenseGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [dateFilterMode, setDateFilterMode] = useState<ExpenseDateFilterMode>('month');
+  const [dateFilter, setDateFilter] = useState<PeriodFilterSelection>(() => createCurrentPeriodSelection());
   const [tableFilters, setTableFilters] = useState<ExpenseTableFilters>({
     entryDate: '',
     concept: '',
@@ -583,26 +572,14 @@ export function ExpensesPage() {
     setIsSubtotalCalculatorOpen(false);
   }, [activeExpenseId]);
 
-  const activeDateRange = useMemo(() => {
-    if (dateFilterMode === 'month') {
-      return {
-        start: getStartOfCurrentMonth(),
-        end: getTodayDate(),
-      };
-    }
-
-    if (dateFilterMode === 'year') {
-      return {
-        start: getStartOfCurrentYear(),
-        end: getTodayDate(),
-      };
-    }
-
-    return {
-      start: '',
-      end: '',
-    };
-  }, [dateFilterMode]);
+  const activeDateRange = useMemo(
+    () =>
+      getPeriodDateRange(dateFilter, {
+        clampCurrentMonthToToday: true,
+        clampCurrentYearToToday: true,
+      }),
+    [dateFilter],
+  );
 
   const loadExpenseData = useCallback(async () => {
     if (!activeDateRange) {
@@ -1434,41 +1411,12 @@ export function ExpensesPage() {
   const showCapturePanel = !isNarrowViewport || mobilePrimaryPanel === 'capture';
   const showHistoryPanel = !isNarrowViewport || mobilePrimaryPanel === 'history';
 
-  function handleSelectDateFilter(nextMode: ExpenseDateFilterMode) {
-    setDateFilterMode(nextMode);
-  }
-
   return (
     <div className="page">
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar egresos por fecha">
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('all')}
-                disabled={isLoading}
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('month')}
-                disabled={isLoading}
-              >
-                Este mes
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('year')}
-                disabled={isLoading}
-              >
-                Este año
-              </button>
-            </div>
+            <PeriodFilter ariaLabel="Filtrar egresos por fecha" value={dateFilter} onChange={setDateFilter} disabled={isLoading} />
           </div>
 
           <div className="badge-row" aria-label="Resumen de egresos visibles">

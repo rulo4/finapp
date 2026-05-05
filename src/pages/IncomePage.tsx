@@ -12,11 +12,10 @@ import {
 } from '../features/shared/gridEditors';
 import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import {
-  getStartOfCurrentMonthIsoDate,
-  getStartOfCurrentYearIsoDate,
   getTodayIsoDate,
   isIsoDateString,
 } from '../features/shared/isoDate';
+import { createCurrentPeriodSelection, getPeriodDateRange, type PeriodFilterSelection, PeriodFilter } from '../features/shared/PeriodFilter';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type IncomeSource = {
@@ -57,8 +56,6 @@ type IncomeGridRow = {
   notes: string;
 };
 
-type IncomeDateFilterMode = 'all' | 'month' | 'year';
-
 function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
   const relation = Array.isArray(row.income_sources) ? row.income_sources[0] ?? null : row.income_sources;
 
@@ -70,14 +67,6 @@ function normalizeIncomeEntry(row: IncomeEntryRow): IncomeEntry {
 
 function getTodayDate() {
   return getTodayIsoDate();
-}
-
-function getStartOfCurrentMonth() {
-  return getStartOfCurrentMonthIsoDate();
-}
-
-function getStartOfCurrentYear() {
-  return getStartOfCurrentYearIsoDate();
 }
 
 function isErrorFeedback(message: string) {
@@ -261,7 +250,7 @@ export function IncomePage() {
   const [sourceFilterId, setSourceFilterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [dateFilterMode, setDateFilterMode] = useState<IncomeDateFilterMode>('month');
+  const [dateFilter, setDateFilter] = useState<PeriodFilterSelection>(() => createCurrentPeriodSelection());
   const rowsRef = useRef<IncomeGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, IncomeGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
@@ -271,26 +260,14 @@ export function IncomePage() {
     rowsRef.current = rows;
   }, [rows]);
 
-  const activeDateRange = useMemo(() => {
-    if (dateFilterMode === 'month') {
-      return {
-        start: getStartOfCurrentMonth(),
-        end: getTodayDate(),
-      };
-    }
-
-    if (dateFilterMode === 'year') {
-      return {
-        start: getStartOfCurrentYear(),
-        end: getTodayDate(),
-      };
-    }
-
-    return {
-      start: '',
-      end: '',
-    };
-  }, [dateFilterMode]);
+  const activeDateRange = useMemo(
+    () =>
+      getPeriodDateRange(dateFilter, {
+        clampCurrentMonthToToday: true,
+        clampCurrentYearToToday: true,
+      }),
+    [dateFilter],
+  );
 
   const loadIncomeData = useCallback(async () => {
     if (!activeDateRange) {
@@ -792,10 +769,6 @@ export function IncomePage() {
     [columns, visibleRows],
   );
 
-  function handleSelectDateFilter(nextMode: IncomeDateFilterMode) {
-    setDateFilterMode(nextMode);
-  }
-
   function handleRowsChange(nextRows: IncomeGridRow[], data: { indexes: number[] }) {
     commitIncomeRows(nextRows, data.indexes[0] ?? null);
   }
@@ -825,32 +798,7 @@ export function IncomePage() {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar ingresos por fecha">
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('all')}
-                disabled={isLoading}
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('month')}
-                disabled={isLoading}
-              >
-                Este mes
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => handleSelectDateFilter('year')}
-                disabled={isLoading}
-              >
-                Este año
-              </button>
-            </div>
+            <PeriodFilter ariaLabel="Filtrar ingresos por fecha" value={dateFilter} onChange={setDateFilter} disabled={isLoading} />
           </div>
 
           <div className="badge-row" aria-label="Resumen de ingresos visibles">
