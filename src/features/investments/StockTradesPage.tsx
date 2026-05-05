@@ -16,7 +16,8 @@ import { isIsoDateString } from '../shared/isoDate';
 import { isSupabaseConfigured, supabase } from '../../lib/supabase/client';
 import {
   type Broker,
-  type InvestmentDateFilterMode,
+  createCurrentInvestmentDateFilter,
+  type InvestmentDateFilter,
   type Security,
   commitActiveEditorAndRun,
   createLocalId,
@@ -32,6 +33,7 @@ import {
   isDateWithinRange,
   isErrorFeedback,
 } from './shared';
+import { PeriodFilter } from '../shared/PeriodFilter';
 import { previewFifoSell, type StockBuyMovement, type StockSellMovement } from './positionMetrics';
 
 type TradeKind = 'buy' | 'sell';
@@ -361,7 +363,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   const [brokerFilterId, setBrokerFilterId] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
+  const [dateFilter, setDateFilter] = useState<InvestmentDateFilter>(() => createCurrentInvestmentDateFilter());
   const [buyHistory, setBuyHistory] = useState<StockBuyMovement[]>([]);
   const [sellHistory, setSellHistory] = useState<StockSellMovement[]>([]);
   const rowsRef = useRef<TradeGridRow[]>([]);
@@ -373,7 +375,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     rowsRef.current = rows;
   }, [rows]);
 
-  const activeDateRange = useMemo(() => getDateRange(dateFilterMode), [dateFilterMode]);
+  const activeDateRange = useMemo(() => getDateRange(dateFilter), [dateFilter]);
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
@@ -1312,32 +1314,12 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label={`Filtrar ${panelTitle.toLowerCase()} por fecha`}>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('all')}
-                disabled={isLoading}
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('month')}
-                disabled={isLoading}
-              >
-                Este mes
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('year')}
-                disabled={isLoading}
-              >
-                Este año
-              </button>
-            </div>
+            <PeriodFilter
+              ariaLabel={`Filtrar ${panelTitle.toLowerCase()} por fecha`}
+              value={dateFilter}
+              onChange={setDateFilter}
+              disabled={isLoading}
+            />
           </div>
 
           <div className="badge-row" aria-label={`Resumen de ${panelTitle.toLowerCase()} visibles`}>

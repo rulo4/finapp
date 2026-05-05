@@ -14,6 +14,7 @@ import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../fea
 import { isIsoDateString } from '../features/shared/isoDate';
 import {
   commitActiveEditorAndRun,
+  createCurrentInvestmentDateFilter,
   createLocalId,
   formatCurrencyTotal,
   formatEditableNumber,
@@ -22,9 +23,10 @@ import {
   investmentCurrencyOptions,
   isDateWithinRange,
   isErrorFeedback,
-  type InvestmentDateFilterMode,
+  type InvestmentDateFilter,
   type InvestmentEntity,
 } from '../features/investments/shared';
+import { PeriodFilter } from '../features/shared/PeriodFilter';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type InvestmentMovement = {
@@ -274,7 +276,7 @@ export function InvestmentsPage() {
   const [lifetimeNetByEntity, setLifetimeNetByEntity] = useState<Map<string, number>>(new Map());
   const [isLoading, setIsLoading] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
-  const [dateFilterMode, setDateFilterMode] = useState<InvestmentDateFilterMode>('year');
+  const [dateFilter, setDateFilter] = useState<InvestmentDateFilter>(() => createCurrentInvestmentDateFilter());
   const [entityFilterId, setEntityFilterId] = useState('');
   const [investmentColumnOrder, setInvestmentColumnOrder] = useState<readonly InvestmentColumnKey[]>(INVESTMENT_COLUMN_ORDER);
   const [summaryColumnOrder, setSummaryColumnOrder] = useState<readonly SummaryColumnKey[]>(SUMMARY_COLUMN_ORDER);
@@ -288,7 +290,7 @@ export function InvestmentsPage() {
     rowsRef.current = rows;
   }, [rows]);
 
-  const activeDateRange = useMemo(() => getDateRange(dateFilterMode), [dateFilterMode]);
+  const activeDateRange = useMemo(() => getDateRange(dateFilter), [dateFilter]);
 
   const loadData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
@@ -1012,32 +1014,12 @@ export function InvestmentsPage() {
       <section className="card finance-panel">
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
-            <div className="income-period-filter" role="group" aria-label="Filtrar movimientos de inversión por fecha">
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'all' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('all')}
-                disabled={isLoading}
-              >
-                Todo
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'month' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('month')}
-                disabled={isLoading}
-              >
-                Este mes
-              </button>
-              <button
-                type="button"
-                className={`income-period-filter__button ${dateFilterMode === 'year' ? 'income-period-filter__button--active' : ''}`}
-                onClick={() => setDateFilterMode('year')}
-                disabled={isLoading}
-              >
-                Este año
-              </button>
-            </div>
+            <PeriodFilter
+              ariaLabel="Filtrar movimientos de inversión por fecha"
+              value={dateFilter}
+              onChange={setDateFilter}
+              disabled={isLoading}
+            />
           </div>
 
           <div className="badge-row" aria-label="Resumen de movimientos de inversión visibles">
