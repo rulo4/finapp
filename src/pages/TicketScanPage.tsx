@@ -25,6 +25,7 @@ type UnitOfMeasure = { id: string; name: string };
 
 type ReviewRow = {
   id: string;
+  selected: boolean;
   entryDate: string;
   concept: string;
   quantity: string;
@@ -82,6 +83,7 @@ function normalizeReviewRow(row: ReviewRow): ReviewRow {
 function toReviewRow(expense: ParsedTicketExpense): ReviewRow {
   return normalizeReviewRow({
     id: createLocalId('ticket-row'),
+    selected: true,
     entryDate: expense.entry_date,
     concept: expense.concept,
     quantity: formatEditableNumber(expense.quantity) || '1',
@@ -123,6 +125,7 @@ function createEmptyReviewRow(defaults?: Partial<Pick<ReviewRow, 'entryDate' | '
 
   return normalizeReviewRow({
     id: createLocalId('ticket-row'),
+    selected: true,
     entryDate: defaults?.entryDate ?? getTodayDate(),
     concept: '',
     quantity: '1',
@@ -441,8 +444,11 @@ export function TicketScanPage() {
 
     return paymentInstrumentId ? paymentNameById.get(paymentInstrumentId) ?? 'Sin pago' : 'Sin pago';
   }, [paymentNameById, ticketHeader.paymentInstrumentId]);
-  const ticketTotalLabel = useMemo(() => {
-    const totalAmount = rows.reduce((sum, row) => {
+  const selectedRows = useMemo(() => rows.filter((row) => row.selected), [rows]);
+  const selectedRowCount = selectedRows.length;
+  const areAllRowsSelected = rows.length > 0 && selectedRowCount === rows.length;
+  const selectedTicketTotalLabel = useMemo(() => {
+    const totalAmount = selectedRows.reduce((sum, row) => {
       const rowTotal = Number(row.totalAmountMxn);
 
       return Number.isFinite(rowTotal) ? sum + rowTotal : sum;
@@ -453,12 +459,19 @@ export function TicketScanPage() {
       currency: 'MXN',
       maximumFractionDigits: 2,
     }).format(totalAmount);
-  }, [rows]);
+  }, [selectedRows]);
   const canSelectImage = !previewUrl && !currentTicketId && !isProcessing && !isSaving && !isCatalogsLoading;
   const canRetryProcessing = Boolean(currentStoragePath && currentTicketStatus === 'error' && !isProcessing && !isSaving);
   const canAddProduct = Boolean(currentTicketId && !isProcessing && !isSaving && currentTicketStatus !== 'saved');
   const isReviewEditable = currentTicketStatus !== 'saved' && !isProcessing && !isSaving;
   const isTicketHeaderEditable = Boolean(currentTicketId && isReviewEditable);
+  const saveExpensesActionLabel = isSaving
+    ? 'Guardando egresos'
+    : currentTicketStatus === 'saved'
+      ? 'Egresos guardados'
+      : selectedRowCount === 0
+        ? 'Selecciona filas para guardar'
+        : 'Guardar egresos';
 
   function setTicketHeaderState(header: TicketHeaderState) {
     setTicketEntryDate(header.entryDate);
@@ -537,6 +550,28 @@ export function TicketScanPage() {
     focusCellEditor(0, 0, 'concept');
     setFeedback('Producto añadido.');
   }
+
+  const handleToggleRowSelection = useCallback(
+    (rowId: string, nextSelected: boolean) => {
+      if (!isReviewEditable) {
+        return;
+      }
+
+      setRows((currentRows) => currentRows.map((row) => (row.id === rowId ? { ...row, selected: nextSelected } : row)));
+    },
+    [isReviewEditable],
+  );
+
+  const handleToggleAllRows = useCallback(
+    (nextSelected: boolean) => {
+      if (!isReviewEditable) {
+        return;
+      }
+
+      setRows((currentRows) => currentRows.map((row) => ({ ...row, selected: nextSelected })));
+    },
+    [isReviewEditable],
+  );
 
   async function processTicketFromStoragePath(storagePath: string) {
     if (!supabase) {
@@ -666,10 +701,17 @@ export function TicketScanPage() {
       return;
     }
 
-    const invalidRowIndex = rows.findIndex((row) => validateReviewRow(row) != null);
+    const selectedReviewRows = rows.filter((row) => row.selected);
+
+    if (selectedReviewRows.length === 0) {
+      setFeedback('Selecciona al menos una fila para guardar.');
+      return;
+    }
+
+    const invalidRowIndex = rows.findIndex((row) => row.selected && validateReviewRow(row) != null);
 
     if (invalidRowIndex >= 0) {
-      setFeedback(`La fila ${invalidRowIndex + 1} necesita correcciones: ${validateReviewRow(rows[invalidRowIndex])}.`);
+      setFeedback(`La fila ${invalidRowIndex + 1} seleccionada necesita correcciones: ${validateReviewRow(rows[invalidRowIndex])}.`);
       return;
     }
 
@@ -689,7 +731,7 @@ export function TicketScanPage() {
       return;
     }
 
-    const payload = rows.map((row) => {
+    const payload = selectedReviewRows.map((row) => {
       const subtotalOriginal = Number(row.subtotalOriginal);
       const fxRateToMxn = Number(row.currencyCode === 'MXN' ? '1' : row.fxRateToMxn);
 
@@ -745,6 +787,41 @@ export function TicketScanPage() {
 
   const columns = useMemo<readonly Column<ReviewRow>[]>(
     () => [
+      {
+        key: 'selected',
+        name: '',
+        width: 44,
+        frozen: true,
+        editable: false,
+        renderHeaderCell: () => (
+          <div className="ticket-review-checkbox">
+            <input
+              type="checkbox"
+              aria-label="Seleccionar todas las filas"
+              checked={areAllRowsSelected}
+              disabled={rows.length === 0 || !isReviewEditable}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                handleToggleAllRows(event.target.checked);
+              }}
+            />
+          </div>
+        ),
+        renderCell: ({ row }) => (
+          <div className="ticket-review-checkbox">
+            <input
+              type="checkbox"
+              checked={row.selected}
+              disabled={!isReviewEditable}
+              aria-label={`Seleccionar fila ${row.concept.trim() || 'sin concepto'}`}
+              onClick={(event) => event.stopPropagation()}
+              onChange={(event) => {
+                handleToggleRowSelection(row.id, event.target.checked);
+              }}
+            />
+          </div>
+        ),
+      },
       {
         key: 'concept',
         name: 'Concepto',
@@ -810,7 +887,7 @@ export function TicketScanPage() {
         renderEditCell: (props) => <InputCellEditor {...props} inputType="text" />,
       },
     ],
-    [categoryOptions, currencyOptions, isReviewEditable, unitOptions],
+    [areAllRowsSelected, categoryOptions, currencyOptions, handleToggleAllRows, handleToggleRowSelection, isReviewEditable, rows.length, unitOptions],
   );
 
   const handleNavigateToNextCell = useCallback(
@@ -847,12 +924,12 @@ export function TicketScanPage() {
               <FontAwesomeIcon icon={faCreditCard} />
               <span>{paymentLabel}</span>
             </span>
-            <span className="badge ticket-card__badge" title="Gastos detectados">
+            <span className="badge ticket-card__badge" title="Filas seleccionadas / detectadas">
               <FontAwesomeIcon icon={faReceipt} />
-              <span>{rows.length}</span>
+              <span>{rows.length === 0 ? '0' : `${selectedRowCount}/${rows.length}`}</span>
             </span>
-            <span className="badge ticket-card__badge" title="Total del ticket en MXN">
-              <span>{ticketTotalLabel}</span>
+            <span className="badge ticket-card__badge" title="Total seleccionado en MXN">
+              <span>{selectedTicketTotalLabel}</span>
             </span>
           </div>
         </div>
@@ -969,9 +1046,9 @@ export function TicketScanPage() {
                 type="button"
                 className="tickets-button tickets-button--primary tickets-button--icon"
                 onClick={() => void handleSaveExpenses()}
-                disabled={rows.length === 0 || isProcessing || isSaving || currentTicketStatus === 'saved'}
-                aria-label={isSaving ? 'Guardando egresos' : currentTicketStatus === 'saved' ? 'Egresos guardados' : 'Guardar egresos'}
-                title={isSaving ? 'Guardando egresos' : currentTicketStatus === 'saved' ? 'Egresos guardados' : 'Guardar egresos'}
+                disabled={selectedRowCount === 0 || isProcessing || isSaving || currentTicketStatus === 'saved'}
+                aria-label={saveExpensesActionLabel}
+                title={saveExpensesActionLabel}
               >
                 <FontAwesomeIcon icon={isSaving ? faCloudArrowUp : faFloppyDisk} />
               </button>
