@@ -8,10 +8,12 @@ type BaseMovement = {
 };
 
 export type StockBuyMovement = BaseMovement & {
+  brokerId?: string | null;
   unitPriceOriginal: number;
 };
 
 export type StockSellMovement = BaseMovement & {
+  brokerId?: string | null;
   stockBuyId?: string | null;
   sellGroupId?: string | null;
 };
@@ -49,6 +51,7 @@ export type SecurityHoldingMetrics = {
 
 type CandidateSell = {
   id: string;
+  brokerId?: string | null;
   securityId: string;
   tradeDate: string;
   quantity: number | null;
@@ -233,10 +236,13 @@ function buildPositionSnapshot(
   securityId: string,
   targetSell: CandidateSell,
 ) {
+  const scopedBrokerId = targetSell.brokerId?.trim() || null;
   const orderedMovements: OrderedMovement[] = [
-    ...buys.filter((buy) => buy.securityId === securityId).map((buy) => ({ ...buy, kind: 'buy' as const })),
+    ...buys
+      .filter((buy) => buy.securityId === securityId && (!scopedBrokerId || buy.brokerId === scopedBrokerId))
+      .map((buy) => ({ ...buy, kind: 'buy' as const })),
     ...sells
-      .filter((sell) => sell.securityId === securityId && sell.id !== targetSell.id)
+      .filter((sell) => sell.securityId === securityId && sell.id !== targetSell.id && (!scopedBrokerId || sell.brokerId === scopedBrokerId))
       .map((sell) => ({ ...sell, kind: 'sell' as const })),
   ].sort(compareMovementOrder);
 
@@ -289,7 +295,7 @@ function buildPositionSnapshot(
 }
 
 export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMovement[], candidateSell: CandidateSell): FifoSellPreview | null {
-  if (!candidateSell.securityId || !candidateSell.tradeDate) {
+  if (!candidateSell.securityId || !candidateSell.tradeDate || !candidateSell.brokerId?.trim()) {
     return null;
   }
 
@@ -333,7 +339,7 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       fifoRealizedPnlMxn: null,
       fifoRealizedPnlPct: null,
       matches: [],
-      errorMessage: 'La venta excede la cantidad disponible para este valor.',
+      errorMessage: 'La venta excede la cantidad disponible para este ticker en ese broker.',
     };
   }
 
