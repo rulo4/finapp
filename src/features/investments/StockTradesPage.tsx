@@ -85,6 +85,7 @@ type TradeGridRow = {
 
 type BuyHistoryRow = {
   id: string;
+  broker_id: string;
   security_id: string;
   trade_date: string;
   quantity: number;
@@ -95,6 +96,7 @@ type BuyHistoryRow = {
 
 type SellHistoryRow = {
   id: string;
+  broker_id: string;
   security_id: string;
   trade_date: string;
   quantity: number;
@@ -416,10 +418,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       supabase.from('securities').select('id, ticker, company_name, exchange_code, is_active').order('ticker', { ascending: true }),
       entriesQuery,
       kind === 'sell'
-        ? supabase.from('stock_buys').select('id, security_id, trade_date, quantity, unit_price_original, total_amount_mxn, created_at')
+        ? supabase.from('stock_buys').select('id, broker_id, security_id, trade_date, quantity, unit_price_original, total_amount_mxn, created_at')
         : Promise.resolve({ data: [], error: null }),
       kind === 'sell'
-        ? supabase.from('stock_sells').select('id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id')
+        ? supabase.from('stock_sells').select('id, broker_id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id')
         : Promise.resolve({ data: [], error: null }),
     ]);
 
@@ -451,6 +453,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     const nextSecurities = (securityData as Security[]) ?? [];
     const nextBuyHistory = (((buyHistoryData as BuyHistoryRow[]) ?? []).map((row) => ({
       id: row.id,
+      brokerId: row.broker_id,
       securityId: row.security_id,
       tradeDate: row.trade_date,
       quantity: Number(row.quantity),
@@ -473,6 +476,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     setSellHistory(
       (((sellHistoryData as SellHistoryRow[]) ?? []).map((row) => ({
         id: row.id,
+        brokerId: row.broker_id,
         securityId: row.security_id,
         tradeDate: row.trade_date,
         quantity: Number(row.quantity),
@@ -649,6 +653,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     if (kind === 'sell') {
       const sellPreview = previewFifoSell(buyHistory, sellHistory, {
         id: row.persistedId ?? row.id,
+        brokerId: row.brokerId,
         securityId: row.securityId,
         tradeDate: row.tradeDate,
         quantity,
@@ -924,6 +929,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
     return previewFifoSell(buyHistory, sellHistory, {
       id: draftRow.id,
+      brokerId: draftRow.brokerId,
       securityId: draftRow.securityId,
       tradeDate: draftRow.tradeDate,
       quantity: Number.isFinite(quantity) ? quantity : null,
