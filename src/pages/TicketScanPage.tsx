@@ -853,18 +853,18 @@ export function TicketScanPage() {
         renderEditCell: (props) => <SelectCellEditor {...props} options={categoryOptions} />,
       },
       {
-        key: 'currencyCode',
-        name: 'Moneda',
-        width: 88,
-        editable: isReviewEditable,
-        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
-      },
-      {
         key: 'subtotalOriginal',
         name: 'Subtotal',
         width: 96,
         editable: isReviewEditable,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.01" />,
+      },
+      {
+        key: 'currencyCode',
+        name: 'Moneda',
+        width: 88,
+        editable: isReviewEditable,
+        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'fxRateToMxn',

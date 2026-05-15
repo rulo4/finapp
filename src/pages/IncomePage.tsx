@@ -720,16 +720,16 @@ export function IncomePage() {
         renderEditCell: (props) => <SelectCellEditor {...props} options={sourceOptions} />,
       },
       {
-        key: 'currencyCode',
-        name: 'Moneda',
-        width: DEFAULT_COLUMN_WIDTH,
-        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
-      },
-      {
         key: 'amountOriginal',
         name: 'Monto original',
         width: DEFAULT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0.00" />,
+      },
+      {
+        key: 'currencyCode',
+        name: 'Moneda',
+        width: DEFAULT_COLUMN_WIDTH,
+        renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
       },
       {
         key: 'fxRateToMxn',

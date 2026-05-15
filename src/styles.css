@@ -1636,6 +1636,14 @@ textarea {
   scrollbar-width: thin;
 }
 
+.income-toolbar__action {
+  flex: 0 0 auto;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  font-size: 0.9rem;
+}
+
 .income-period-filter {
   display: flex;
   align-items: center;

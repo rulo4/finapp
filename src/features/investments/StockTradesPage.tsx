@@ -1087,12 +1087,6 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
         renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
       },
-      {
-        key: 'currencyCode',
-        name: 'Moneda',
-        width: 88,
-        renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
-      },
     ];
 
     if (kind === 'sell') {
@@ -1115,12 +1109,6 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           renderHeaderCell: renderBrokerHeaderCell,
           renderCell: ({ row }) => brokerLabelById.get(row.brokerId) ?? '-',
           renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
-        },
-        {
-          key: 'currencyCode',
-          name: 'Moneda',
-          width: 88,
-          renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
         },
         {
           key: 'quantityHeldBeforeSell',
@@ -1150,6 +1138,12 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           name: 'Comisión',
           width: AMOUNT_COLUMN_WIDTH,
           renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+        },
+        {
+          key: 'currencyCode',
+          name: 'Moneda',
+          width: 88,
+          renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
         },
         {
           key: 'fxRateToMxn',
@@ -1255,6 +1249,12 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         name: 'Comisión',
         width: AMOUNT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+      },
+      {
+        key: 'currencyCode',
+        name: 'Moneda',
+        width: 88,
+        renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
       },
       {
         key: 'fxRateToMxn',
