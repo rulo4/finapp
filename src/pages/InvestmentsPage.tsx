@@ -931,19 +931,19 @@ export function InvestmentsPage() {
       renderCell: ({ row }) => entityLabelById.get(row.entityId) ?? '-',
       renderEditCell: (props) => <SelectCellEditor {...props} options={entityOptions} />,
     },
-    currencyCode: {
-      key: 'currencyCode',
-      name: 'Moneda',
-      width: 88,
-      draggable: true,
-      renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
-    },
     amountOriginal: {
       key: 'amountOriginal',
       name: 'Monto',
       width: AMOUNT_COLUMN_WIDTH,
       draggable: true,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" step="0.000001" placeholder="1000 o -1000" />,
+    },
+    currencyCode: {
+      key: 'currencyCode',
+      name: 'Moneda',
+      width: 88,
+      draggable: true,
+      renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
     },
     fxRateToMxn: {
       key: 'fxRateToMxn',

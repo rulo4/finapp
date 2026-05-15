@@ -23,6 +23,7 @@ import {
   createLocalId,
   formatCurrencyTotal,
   formatEditableNumber,
+  formatQuantityTotal,
   formatSecurityLabel,
   formatSecurityOptionLabel,
   getDateRange,
@@ -33,6 +34,11 @@ import {
 } from './shared';
 import { PeriodFilter } from '../shared/PeriodFilter';
 import { DividendImportPanel } from './DividendImportPanel';
+import {
+  previewPositionAvailability,
+  type StockBuyMovement,
+  type StockSellMovement,
+} from './positionMetrics';
 
 type DividendDbRow = {
   id: string;
@@ -64,6 +70,29 @@ type DividendGridRow = {
   notes: string;
 };
 
+type BuyHistoryRow = {
+  id: string;
+  broker_id: string;
+  security_id: string;
+  trade_date: string;
+  quantity: number;
+  unit_price_original: number;
+  total_amount_mxn: number;
+  created_at: string;
+};
+
+type SellHistoryRow = {
+  id: string;
+  broker_id: string;
+  security_id: string;
+  trade_date: string;
+  quantity: number;
+  total_amount_mxn: number;
+  created_at: string;
+  stock_buy_id: string | null;
+  sell_group_id: string | null;
+};
+
 const GRID_ROW_HEIGHT = 30;
 const FILTER_HEADER_ROW_HEIGHT = 64;
 const DEFAULT_COLUMN_WIDTH = 96;
@@ -72,6 +101,7 @@ const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 160;
 const BROKER_COLUMN_WIDTH = 76;
 const FX_COLUMN_WIDTH = 72;
+const POSITION_COLUMN_WIDTH = 96;
 
 function createDraftDividendRow(): DividendGridRow {
   return {
@@ -196,6 +226,9 @@ function toDividendGridRow(row: DividendDbRow): DividendGridRow {
 export function DividendsGridPage() {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [securities, setSecurities] = useState<Security[]>([]);
+  const [buyHistory, setBuyHistory] = useState<StockBuyMovement[]>([]);
+  const [sellHistory, setSellHistory] = useState<StockSellMovement[]>([]);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<'history' | 'import'>('history');
   const [rows, setRows] = useState<DividendGridRow[]>([]);
   const [tickerFilter, setTickerFilter] = useState('');
   const [entryDateFilter, setEntryDateFilter] = useState('');
@@ -240,10 +273,18 @@ export function DividendsGridPage() {
       { data: brokerData, error: brokerError },
       { data: securityData, error: securityError },
       { data: entryData, error: entryError },
+      { data: buyHistoryData, error: buyHistoryError },
+      { data: sellHistoryData, error: sellHistoryError },
     ] = await Promise.all([
       supabase.from('brokers').select('id, name').eq('is_active', true).order('name', { ascending: true }),
       supabase.from('securities').select('id, ticker, company_name, exchange_code, is_active').order('ticker', { ascending: true }),
       entriesQuery,
+      supabase
+        .from('stock_buys')
+        .select('id, broker_id, security_id, trade_date, quantity, unit_price_original, total_amount_mxn, created_at'),
+      supabase
+        .from('stock_sells')
+        .select('id, broker_id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id'),
     ]);
 
     if (brokerError) {
@@ -264,8 +305,35 @@ export function DividendsGridPage() {
       return;
     }
 
+    if (buyHistoryError || sellHistoryError) {
+      setFeedback(`No fue posible cargar el historial para calcular posiciones: ${buyHistoryError?.message ?? sellHistoryError?.message}`);
+      setIsLoading(false);
+      return;
+    }
+
     const nextBrokers = (brokerData as Broker[]) ?? [];
     const nextSecurities = (securityData as Security[]) ?? [];
+    const nextBuyHistory = (((buyHistoryData as BuyHistoryRow[]) ?? []).map((row) => ({
+      id: row.id,
+      brokerId: row.broker_id,
+      securityId: row.security_id,
+      tradeDate: row.trade_date,
+      quantity: Number(row.quantity),
+      unitPriceOriginal: Number(row.unit_price_original),
+      totalAmountMxn: Number(row.total_amount_mxn),
+      createdAt: row.created_at,
+    }))) satisfies StockBuyMovement[];
+    const nextSellHistory = (((sellHistoryData as SellHistoryRow[]) ?? []).map((row) => ({
+      id: row.id,
+      brokerId: row.broker_id,
+      securityId: row.security_id,
+      tradeDate: row.trade_date,
+      quantity: Number(row.quantity),
+      totalAmountMxn: Number(row.total_amount_mxn),
+      createdAt: row.created_at,
+      stockBuyId: row.stock_buy_id,
+      sellGroupId: row.sell_group_id,
+    }))) satisfies StockSellMovement[];
     const nextRows = ((entryData as DividendDbRow[]) ?? []).map(toDividendGridRow);
     const loadedRows = withDraftRow(nextRows);
 
@@ -273,6 +341,8 @@ export function DividendsGridPage() {
     rowsRef.current = loadedRows;
     setBrokers(nextBrokers);
     setSecurities(nextSecurities);
+    setBuyHistory(nextBuyHistory);
+    setSellHistory(nextSellHistory);
     setRows(loadedRows);
 
     const missingDependencies: string[] = [];
@@ -543,6 +613,25 @@ export function DividendsGridPage() {
       return !normalizedTickerFilter || tickerLabel.includes(normalizedTickerFilter);
     });
   }, [brokerFilterId, entryDateFilter, rows, securityLabelById, tickerFilter]);
+  const positionQuantityByRowId = useMemo(() => {
+    const quantities = new Map<string, string>();
+
+    for (const row of rows) {
+      const positionPreview = previewPositionAvailability(buyHistory, sellHistory, {
+        id: row.persistedId ?? row.id,
+        brokerId: row.brokerId,
+        securityId: row.securityId,
+        tradeDate: row.entryDate,
+      });
+
+      quantities.set(
+        row.id,
+        positionPreview && !positionPreview.errorMessage ? formatQuantityTotal(positionPreview.availableQuantity) : '—',
+      );
+    }
+
+    return quantities;
+  }, [buyHistory, rows, sellHistory]);
   const visibleSummary = useMemo(() => {
     const visibleRows = filteredRows.filter((row) => !row.isDraft);
     const totalAmount = visibleRows.reduce((sum, row) => {
@@ -707,12 +796,6 @@ export function DividendsGridPage() {
       renderEditCell: (props) => <SelectCellEditor {...props} options={brokerOptions} />,
     },
     {
-      key: 'currencyCode',
-      name: 'Moneda',
-      width: 88,
-      renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
-    },
-    {
       key: 'grossAmountOriginal',
       name: 'Bruto',
       width: AMOUNT_COLUMN_WIDTH,
@@ -723,6 +806,12 @@ export function DividendsGridPage() {
       name: 'Ret.',
       width: AMOUNT_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+    },
+    {
+      key: 'currencyCode',
+      name: 'Moneda',
+      width: 88,
+      renderEditCell: (props) => <SelectCellEditor {...props} options={investmentCurrencyOptions} />,
     },
     {
       key: 'fxRateToMxn',
@@ -738,12 +827,19 @@ export function DividendsGridPage() {
       editable: false,
     },
     {
+      key: 'positionQuantity',
+      name: 'Títulos',
+      width: POSITION_COLUMN_WIDTH,
+      editable: false,
+      renderCell: ({ row }) => positionQuantityByRowId.get(row.id) ?? '—',
+    },
+    {
       key: 'notes',
       name: 'Notas',
       width: NOTES_COLUMN_WIDTH,
       renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
     },
-  ], [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, entryDateFilter, handleDeleteRow, handleRevertRow, persistRow, securityLabelById, securityOptions, tickerFilter]);
+  ], [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, entryDateFilter, handleDeleteRow, handleRevertRow, persistRow, positionQuantityByRowId, securityLabelById, securityOptions, tickerFilter]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
 
@@ -780,58 +876,86 @@ export function DividendsGridPage() {
     }, 0);
   }
 
+  const handleImported = useCallback(async () => {
+    await Promise.resolve(loadData());
+    setActiveWorkspaceTab('history');
+  }, [loadData]);
+
   return (
     <div className="page">
-      <DividendImportPanel brokers={brokers} securities={securities} onImported={loadData} />
+      <div className="expense-workspace-toggle" role="tablist" aria-label="Cambiar vista de dividendos">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeWorkspaceTab === 'history'}
+          className={`expense-workspace-toggle__button${activeWorkspaceTab === 'history' ? ' expense-workspace-toggle__button--active' : ''}`}
+          onClick={() => setActiveWorkspaceTab('history')}
+        >
+          Dividendos
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeWorkspaceTab === 'import'}
+          className={`expense-workspace-toggle__button${activeWorkspaceTab === 'import' ? ' expense-workspace-toggle__button--active' : ''}`}
+          onClick={() => setActiveWorkspaceTab('import')}
+        >
+          Importar
+        </button>
+      </div>
 
-      <section className="card finance-panel">
-        <div className="income-toolbar">
-          <div className="income-toolbar__controls">
-            <PeriodFilter ariaLabel="Filtrar dividendos por fecha" value={dateFilter} onChange={setDateFilter} disabled={isLoading} />
+      {activeWorkspaceTab === 'import' ? (
+        <DividendImportPanel brokers={brokers} securities={securities} onImported={handleImported} />
+      ) : (
+        <section className="card finance-panel">
+          <div className="income-toolbar">
+            <div className="income-toolbar__controls">
+              <PeriodFilter ariaLabel="Filtrar dividendos por fecha" value={dateFilter} onChange={setDateFilter} disabled={isLoading} />
+            </div>
+
+            <div className="badge-row" aria-label="Resumen de dividendos visibles">
+              <span className="badge">{visibleSummary.count} regs</span>
+              <span className="badge">{visibleSummary.totalLabel}</span>
+            </div>
           </div>
 
-          <div className="badge-row" aria-label="Resumen de dividendos visibles">
-            <span className="badge">{visibleSummary.count} regs</span>
-            <span className="badge">{visibleSummary.totalLabel}</span>
+          {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
+          {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
+
+          <div className="grid-wrapper grid-wrapper--tall">
+            <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
+              <DataGrid
+                ref={gridRef}
+                columns={columns}
+                rows={filteredRows}
+                rowHeight={GRID_ROW_HEIGHT}
+                headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
+                rowKeyGetter={(row) => row.id}
+                onRowsChange={handleRowsChange}
+                onCellClick={(args) => {
+                  if (args.column.renderEditCell) {
+                    args.selectCell(true);
+                  }
+                }}
+                onSelectedCellChange={(args) => {
+                  if (args.row && args.column.renderEditCell) {
+                    focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
+                  }
+                }}
+                defaultColumnOptions={{ resizable: true }}
+                rowClass={(row) => {
+                  if (row.status === 'saving') return 'row-saving';
+                  if (row.status === 'error') return 'row-error';
+                  if (row.status === 'new') return 'row-new';
+                  if (row.status === 'dirty') return 'row-dirty';
+                  return 'row-saved';
+                }}
+                style={{ blockSize: 500 }}
+              />
+            </GridEditorNavigationProvider>
           </div>
-        </div>
-
-        {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
-        {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
-
-        <div className="grid-wrapper grid-wrapper--tall">
-          <GridEditorNavigationProvider onNavigateToNextCell={handleNavigateToNextCell}>
-            <DataGrid
-              ref={gridRef}
-              columns={columns}
-              rows={filteredRows}
-              rowHeight={GRID_ROW_HEIGHT}
-              headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
-              rowKeyGetter={(row) => row.id}
-              onRowsChange={handleRowsChange}
-              onCellClick={(args) => {
-                if (args.column.renderEditCell) {
-                  args.selectCell(true);
-                }
-              }}
-              onSelectedCellChange={(args) => {
-                if (args.row && args.column.renderEditCell) {
-                  focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
-                }
-              }}
-              defaultColumnOptions={{ resizable: true }}
-              rowClass={(row) => {
-                if (row.status === 'saving') return 'row-saving';
-                if (row.status === 'error') return 'row-error';
-                if (row.status === 'new') return 'row-new';
-                if (row.status === 'dirty') return 'row-dirty';
-                return 'row-saved';
-              }}
-              style={{ blockSize: 500 }}
-            />
-          </GridEditorNavigationProvider>
-        </div>
-      </section>
+        </section>
+      )}
     </div>
   );
 }

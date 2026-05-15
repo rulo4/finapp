@@ -49,6 +49,20 @@ export type SecurityHoldingMetrics = {
   remainingFifoCostBasisMxn: number;
 };
 
+export type PositionAvailabilityCandidate = {
+  id: string;
+  brokerId?: string | null;
+  securityId: string;
+  tradeDate: string;
+  createdAt?: string | null;
+};
+
+export type PositionAvailabilityPreview = {
+  availableQuantity: number;
+  remainingFifoCostBasisMxn: number;
+  errorMessage: string | null;
+};
+
 type CandidateSell = {
   id: string;
   brokerId?: string | null;
@@ -397,6 +411,35 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
     fifoRealizedPnlPct: fifoCostBasisMxn > EPSILON ? round6(fifoRealizedPnlMxn / fifoCostBasisMxn) : null,
     matches,
     errorMessage: null,
+  };
+}
+
+export function previewPositionAvailability(
+  buys: StockBuyMovement[],
+  sells: StockSellMovement[],
+  candidate: PositionAvailabilityCandidate,
+): PositionAvailabilityPreview | null {
+  if (!candidate.securityId || !candidate.tradeDate || !candidate.brokerId?.trim()) {
+    return null;
+  }
+
+  const snapshot = buildPositionSnapshot(buys, sells, candidate.securityId, {
+    id: candidate.id,
+    brokerId: candidate.brokerId,
+    securityId: candidate.securityId,
+    tradeDate: candidate.tradeDate,
+    quantity: null,
+    unitPriceOriginal: null,
+    feesOriginal: null,
+    fxRateToMxn: null,
+    totalAmountMxn: null,
+    createdAt: candidate.createdAt ?? '9999-12-31T23:59:59.999Z',
+  });
+
+  return {
+    availableQuantity: snapshot.availableQuantity,
+    remainingFifoCostBasisMxn: snapshot.remainingFifoCostBasisMxn,
+    errorMessage: snapshot.errorMessage,
   };
 }
 

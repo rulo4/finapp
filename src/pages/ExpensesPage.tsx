@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faPlus, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
@@ -134,7 +134,6 @@ function isErrorFeedback(message: string) {
   );
 }
 
-const ACTION_COLUMN_WIDTH = 72;
 const DATE_COLUMN_WIDTH = 88;
 const CONCEPT_COLUMN_WIDTH = 200;
 const QUANTITY_COLUMN_WIDTH = 64;
@@ -655,20 +654,6 @@ export function ExpensesPage() {
     void loadExpenseData();
   }, [activeDateRange, loadExpenseData]);
 
-  function commitActiveEditorAndRun(action: () => void) {
-    const activeElement = document.activeElement;
-
-    if (activeElement instanceof HTMLElement) {
-      activeElement.blur();
-    }
-
-    window.setTimeout(() => {
-      window.requestAnimationFrame(() => {
-        window.requestAnimationFrame(action);
-      });
-    }, 0);
-  }
-
   function commitExpenseRows(nextRows: ExpenseGridRow[], rowIndex: number | null) {
     if (rowIndex == null) {
       rowsRef.current = nextRows;
@@ -977,7 +962,6 @@ export function ExpensesPage() {
   const storeLabelById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const unitLabelById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
   const visibleRows = useMemo(() => {
-    const draftRow = rows.find((row) => row.isDraft) ?? null;
     const entryDateFilter = tableFilters.entryDate.trim();
     const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
     const categoryIdFilter = tableFilters.categoryId.trim();
@@ -1011,7 +995,7 @@ export function ExpensesPage() {
       return true;
     });
 
-    return draftRow ? [draftRow, ...filteredRows] : filteredRows;
+    return filteredRows;
   }, [rows, tableFilters]);
   const visibleExpenseSummary = useMemo(() => {
     const persistedVisibleRows = visibleRows.filter((row) => !row.isDraft);
@@ -1048,27 +1032,6 @@ export function ExpensesPage() {
       paymentInstrumentId: '',
       storeId: '',
     });
-  }
-
-  function renderActionsHeaderCell() {
-    return (
-      <div className="grid-header-action" onClick={(event) => event.stopPropagation()}>
-        <button
-          type="button"
-          className={`grid-action ${hasActiveTableFilters ? 'grid-action--delete' : 'grid-action--clear'}`}
-          aria-label="Resetear filtros"
-          title="Resetear filtros"
-          disabled={!hasActiveTableFilters}
-          onClick={(event) => {
-            event.preventDefault();
-            event.stopPropagation();
-            resetTableFilters();
-          }}
-        >
-          <FontAwesomeIcon icon={faFilterCircleXmark} className="grid-header-action__icon" />
-        </button>
-      </div>
-    );
   }
 
   function renderTextFilterHeaderCell(
@@ -1209,86 +1172,6 @@ export function ExpensesPage() {
   const columns = useMemo<readonly Column<ExpenseGridRow>[]>(
     () => [
       {
-        key: 'actions',
-        name: '',
-        width: ACTION_COLUMN_WIDTH,
-        frozen: true,
-        editable: false,
-        headerCellClass: 'grid-header-action-cell',
-        renderHeaderCell: renderActionsHeaderCell,
-        renderCell: ({ row }) => {
-          const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
-          const actionCount = showPrimaryActions ? 2 : row.ticketId ? 2 : 1;
-
-          return (
-            <div className={`grid-actions grid-actions--${actionCount}`}>
-              {showPrimaryActions ? (
-                <>
-                  <button
-                    type="button"
-                    className="grid-action grid-action--save"
-                    title="Guardar"
-                    aria-label="Guardar"
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      commitActiveEditorAndRun(() => {
-                        void persistExpenseRow(row.id);
-                      });
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faFloppyDisk} />
-                  </button>
-                  <button
-                    type="button"
-                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--revert'}`}
-                    title={row.isDraft ? 'Limpiar' : 'Deshacer'}
-                    aria-label={row.isDraft ? 'Limpiar' : 'Deshacer'}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      handleRevertRow(row);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faRotateLeft} />
-                  </button>
-                </>
-              ) : null}
-              {!showPrimaryActions ? (
-                <>
-                  {row.ticketId ? (
-                    <Link
-                      className="grid-action grid-action--ticket"
-                      to={`/spending/scan?ticket=${row.ticketId}`}
-                      title="Ver ticket"
-                      aria-label="Ver ticket"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faReceipt} />
-                    </Link>
-                  ) : null}
-                  <button
-                    type="button"
-                    className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
-                    title={row.isDraft ? 'Limpiar' : 'Eliminar'}
-                    aria-label={row.isDraft ? 'Limpiar' : 'Eliminar'}
-                    onClick={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                      void handleDeleteRow(row);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={row.isDraft ? faEraser : faTrash} />
-                  </button>
-                </>
-              ) : null}
-            </div>
-          );
-        },
-      },
-      {
         key: 'entryDate',
         name: 'Fecha',
         width: DATE_COLUMN_WIDTH,
@@ -1367,25 +1250,13 @@ export function ExpensesPage() {
     ],
     [
       categoryLabelById,
-      categoryOptions,
-      currencyOptions,
-      handleDeleteRow,
-      handleRevertRow,
-      hasActiveTableFilters,
       paymentInstrumentLabelById,
-      paymentInstrumentFilterOptions,
-      paymentInstrumentOptions,
-      persistExpenseRow,
       renderCategoryHeaderCell,
-      categoryFilterOptions,
-      renderActionsHeaderCell,
       renderConceptHeaderCell,
       renderDateHeaderCell,
       renderPaymentInstrumentHeaderCell,
       renderStoreHeaderCell,
-      storeFilterOptions,
       storeLabelById,
-      tableFilters.categoryId,
       unitLabelById,
     ],
   );
@@ -1417,6 +1288,16 @@ export function ExpensesPage() {
         <div className="income-toolbar">
           <div className="income-toolbar__controls">
             <PeriodFilter ariaLabel="Filtrar egresos por fecha" value={dateFilter} onChange={setDateFilter} disabled={isLoading} />
+            <button
+              type="button"
+              className={`grid-action income-toolbar__action ${hasActiveTableFilters ? 'grid-action--delete' : 'grid-action--clear'}`}
+              aria-label="Resetear filtros"
+              title="Resetear filtros"
+              disabled={!hasActiveTableFilters}
+              onClick={resetTableFilters}
+            >
+              <FontAwesomeIcon icon={faFilterCircleXmark} />
+            </button>
           </div>
 
           <div className="badge-row" aria-label="Resumen de egresos visibles">
@@ -1701,6 +1582,16 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={faRotateLeft} />
                     </button>
+                    {activeExpenseRow.ticketId ? (
+                      <Link
+                        className="expense-entry-editor__action"
+                        to={`/spending/scan?ticket=${activeExpenseRow.ticketId}`}
+                        aria-label="Ver ticket"
+                        title="Ver ticket"
+                      >
+                        <FontAwesomeIcon icon={faReceipt} />
+                      </Link>
+                    ) : null}
                     <button
                       type="button"
                       className="expense-entry-editor__action expense-entry-editor__action--delete"
@@ -1724,7 +1615,7 @@ export function ExpensesPage() {
                       setActiveExpenseId(currentDraftRow.id);
                     }}
                   >
-                    <FontAwesomeIcon icon={faReceipt} />
+                    <FontAwesomeIcon icon={faPlus} />
                   </button>
                 ) : null}
               </div>
