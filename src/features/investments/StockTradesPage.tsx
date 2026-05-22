@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { faEraser, faFloppyDisk, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps, type SortColumn } from 'react-data-grid';
 import { AppDatePicker } from '../shared/AppDatePicker';
 import {
   AppSelect,
@@ -34,7 +34,15 @@ import {
   isErrorFeedback,
 } from './shared';
 import { PeriodFilter } from '../shared/PeriodFilter';
-import { previewFifoSell, type StockBuyMovement, type StockSellMovement } from './positionMetrics';
+import {
+  calculateHoldingPeriodYears,
+  calculateRealizedCagr,
+  previewFifoSell,
+  summarizeBuyConsumption,
+  type FifoSellPreview,
+  type StockBuyMovement,
+  type StockSellMovement,
+} from './positionMetrics';
 
 type TradeKind = 'buy' | 'sell';
 
@@ -104,6 +112,7 @@ type SellHistoryRow = {
   created_at: string;
   stock_buy_id: string | null;
   sell_group_id: string | null;
+  fifo_cost_basis_mxn: number | null;
 };
 
 const GRID_ROW_HEIGHT = 30;
@@ -112,6 +121,9 @@ const DEFAULT_COLUMN_WIDTH = 108;
 const AMOUNT_COLUMN_WIDTH = 92;
 const ACTION_COLUMN_WIDTH = 72;
 const NOTES_COLUMN_WIDTH = 160;
+const SELL_SORTABLE_COLUMN_KEYS = new Set(['fifoRealizedPnlMxn', 'fifoRealizedPnlPct', 'holdingPeriodYears', 'fifoRealizedCagr']);
+const POSITION_EPSILON = 0.0000001;
+const LOCKED_BUY_FEEDBACK = 'Las compras usadas en ventas FIFO no se pueden modificar ni eliminar.';
 
 function createDraftTradeRow(): TradeGridRow {
   return {
@@ -346,6 +358,91 @@ function getPnlToneClass(value: number | null) {
   return value > 0 ? 'trade-cell-value trade-cell-value--positive' : 'trade-cell-value trade-cell-value--negative';
 }
 
+function getDraftPreviewNumber(value: number | null | undefined) {
+  return value != null && Number.isFinite(value) ? value : null;
+}
+
+function formatHoldingPeriodYears(value: number | null | undefined) {
+  if (value == null || !Number.isFinite(value)) {
+    return '-';
+  }
+
+  return new Intl.NumberFormat('es-MX', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function compareNullableNumber(left: number | null, right: number | null) {
+  if (left == null && right == null) {
+    return 0;
+  }
+
+  if (left == null) {
+    return 1;
+  }
+
+  if (right == null) {
+    return -1;
+  }
+
+  return left - right;
+}
+
+function getSellRowRealizedPnl(row: TradeGridRow, draftSellPreview: FifoSellPreview | null) {
+  return row.isDraft ? getDraftPreviewNumber(draftSellPreview?.fifoRealizedPnlMxn) : parseEditableNumber(row.fifoRealizedPnlMxn);
+}
+
+function getSellRowRealizedPnlPct(row: TradeGridRow, draftSellPreview: FifoSellPreview | null) {
+  if (row.isDraft) {
+    return getDraftPreviewNumber(draftSellPreview?.fifoRealizedPnlPct);
+  }
+
+  const pnl = parseEditableNumber(row.fifoRealizedPnlMxn);
+  const basis = parseEditableNumber(row.fifoCostBasisMxn);
+  return pnl != null && basis != null && basis !== 0 ? pnl / basis : null;
+}
+
+function getSellRowHoldingPeriodYears(
+  row: TradeGridRow,
+  draftSellPreview: FifoSellPreview | null,
+  buyById: Map<string, StockBuyMovement>,
+) {
+  if (row.isDraft) {
+    return getDraftPreviewNumber(draftSellPreview?.holdingPeriodYears);
+  }
+
+  if (!row.stockBuyId) {
+    return null;
+  }
+
+  const buyTradeDate = buyById.get(row.stockBuyId)?.tradeDate;
+  return buyTradeDate ? calculateHoldingPeriodYears(buyTradeDate, row.tradeDate) : null;
+}
+
+function getSellRowRealizedCagr(
+  row: TradeGridRow,
+  draftSellPreview: FifoSellPreview | null,
+  buyById: Map<string, StockBuyMovement>,
+) {
+  if (row.isDraft) {
+    return getDraftPreviewNumber(draftSellPreview?.fifoRealizedCagr);
+  }
+
+  if (!row.stockBuyId) {
+    return null;
+  }
+
+  const buyTradeDate = buyById.get(row.stockBuyId)?.tradeDate;
+  const basis = parseEditableNumber(row.fifoCostBasisMxn);
+  const totalAmount = parseEditableNumber(row.totalAmountMxn);
+  if (!buyTradeDate || basis == null || totalAmount == null) {
+    return null;
+  }
+
+  return calculateRealizedCagr(buyTradeDate, row.tradeDate, basis, totalAmount);
+}
+
 function createSellGroupId() {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID();
@@ -360,6 +457,8 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
   const [brokers, setBrokers] = useState<Broker[]>([]);
   const [securities, setSecurities] = useState<Security[]>([]);
   const [rows, setRows] = useState<TradeGridRow[]>([]);
+  const [selectedRowId, setSelectedRowId] = useState<string | null>(null);
+  const [sortColumns, setSortColumns] = useState<readonly SortColumn[]>([]);
   const [tickerFilter, setTickerFilter] = useState('');
   const [dateColumnFilter, setDateColumnFilter] = useState('');
   const [brokerFilterId, setBrokerFilterId] = useState('');
@@ -420,9 +519,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       kind === 'sell'
         ? supabase.from('stock_buys').select('id, broker_id, security_id, trade_date, quantity, unit_price_original, total_amount_mxn, created_at')
         : Promise.resolve({ data: [], error: null }),
-      kind === 'sell'
-        ? supabase.from('stock_sells').select('id, broker_id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id')
-        : Promise.resolve({ data: [], error: null }),
+      supabase.from('stock_sells').select('id, broker_id, security_id, trade_date, quantity, total_amount_mxn, created_at, stock_buy_id, sell_group_id, fifo_cost_basis_mxn'),
     ]);
 
     if (brokerError) {
@@ -484,6 +581,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         createdAt: row.created_at,
         stockBuyId: row.stock_buy_id,
         sellGroupId: row.sell_group_id,
+        fifoCostBasisMxn: row.fifo_cost_basis_mxn == null ? null : Number(row.fifo_cost_basis_mxn),
       }))) satisfies StockSellMovement[],
     );
 
@@ -505,6 +603,62 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     void loadData();
   }, [loadData]);
 
+  const buyRowsForMetrics = useMemo(() => {
+    if (kind !== 'buy') {
+      return [] satisfies StockBuyMovement[];
+    }
+
+    return rows
+      .filter((row) => !row.isDraft && row.persistedId)
+      .map((row) => ({
+        id: row.persistedId ?? row.id,
+        brokerId: row.brokerId,
+        securityId: row.securityId,
+        tradeDate: row.tradeDate,
+        quantity: Number(row.quantity),
+        unitPriceOriginal: Number(row.unitPriceOriginal),
+        totalAmountMxn: Number(row.totalAmountMxn),
+        createdAt: row.createdAt,
+      }))
+      .filter(
+        (row) =>
+          row.securityId &&
+          row.tradeDate &&
+          Number.isFinite(row.quantity) &&
+          Number.isFinite(row.unitPriceOriginal) &&
+          Number.isFinite(row.totalAmountMxn),
+      ) satisfies StockBuyMovement[];
+  }, [kind, rows]);
+
+  const buyConsumptionById = useMemo(
+    () => new Map(summarizeBuyConsumption(buyRowsForMetrics, sellHistory).map((summary) => [summary.buyId, summary])),
+    [buyRowsForMetrics, sellHistory],
+  );
+
+  const isBuyRowLocked = useCallback(
+    (row: TradeGridRow) => {
+      if (kind !== 'buy' || row.isDraft) {
+        return false;
+      }
+
+      const buyId = row.persistedId ?? row.id;
+      return buyConsumptionById.get(buyId)?.isUsedInSell ?? false;
+    },
+    [buyConsumptionById, kind],
+  );
+
+  const isBuyRowClosed = useCallback(
+    (row: TradeGridRow) => {
+      if (kind !== 'buy' || row.isDraft) {
+        return false;
+      }
+
+      const buyId = row.persistedId ?? row.id;
+      return buyConsumptionById.get(buyId)?.isClosed ?? false;
+    },
+    [buyConsumptionById, kind],
+  );
+
   function handleRowsChange(nextRows: TradeGridRow[], data: { indexes: number[] }) {
     const rowIndex = data.indexes[0] ?? null;
 
@@ -514,12 +668,12 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       return;
     }
 
-    if (kind === 'sell' && !nextRows[rowIndex].isDraft) {
+    if ((kind === 'sell' && !nextRows[rowIndex].isDraft) || isBuyRowLocked(nextRows[rowIndex])) {
       const restoredRow = persistedRowsRef.current.get(nextRows[rowIndex].id) ?? nextRows[rowIndex];
       const restoredRows = nextRows.map((row, index) => (index === rowIndex ? restoredRow : row));
       rowsRef.current = restoredRows;
       setRows(restoredRows);
-      setFeedback('Las ventas guardadas se ajustan eliminando y capturando de nuevo el movimiento.');
+      setFeedback(kind === 'sell' ? 'Las ventas guardadas se ajustan eliminando y capturando de nuevo el movimiento.' : LOCKED_BUY_FEEDBACK);
       return;
     }
 
@@ -594,6 +748,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
     if (kind === 'sell' && !row.isDraft) {
       setFeedback('Las ventas guardadas se ajustan eliminando y capturando de nuevo el movimiento.');
+      return;
+    }
+
+    if (isBuyRowLocked(row)) {
+      setFeedback(LOCKED_BUY_FEEDBACK);
       return;
     }
 
@@ -763,7 +922,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
     });
 
     setFeedback('Compra guardada.');
-  }, [activeDateRange, buyHistory, kind, loadData, sellHistory, tableName]);
+  }, [activeDateRange, buyHistory, isBuyRowLocked, kind, loadData, sellHistory, tableName]);
 
   const handleDeleteRow = useCallback(async (row: TradeGridRow) => {
     if (row.isDraft) {
@@ -778,6 +937,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
 
     if (!supabase) {
       setFeedback('Supabase no está disponible para eliminar movimientos.');
+      return;
+    }
+
+    if (isBuyRowLocked(row)) {
+      setFeedback(LOCKED_BUY_FEEDBACK);
       return;
     }
 
@@ -807,7 +971,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       return nextRows;
     });
     setFeedback('Compra eliminada.');
-  }, [kind, loadData, tableName]);
+  }, [isBuyRowLocked, kind, loadData, tableName]);
 
   const handleRevertRow = useCallback((row: TradeGridRow) => {
     if (row.isDraft) {
@@ -904,13 +1068,43 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         }, 0)
       : null;
 
+    let activeQuantity = 0;
+    let activeAmount = 0;
+    let activeOpenCount = 0;
+    let closedCount = 0;
+
+    if (kind === 'buy') {
+      for (const row of visibleRows) {
+        const rowQuantity = Number(row.quantity);
+        const rowTotalAmount = Number(row.totalAmountMxn);
+        const consumption = buyConsumptionById.get(row.persistedId ?? row.id);
+        const remainingQuantity = consumption?.remainingQuantity ?? (Number.isFinite(rowQuantity) ? rowQuantity : 0);
+        const remainingAmount = consumption?.remainingFifoCostBasisMxn ?? (Number.isFinite(rowTotalAmount) ? rowTotalAmount : 0);
+
+        activeQuantity += remainingQuantity > POSITION_EPSILON ? remainingQuantity : 0;
+        activeAmount += remainingAmount > POSITION_EPSILON ? remainingAmount : 0;
+
+        if (remainingQuantity > POSITION_EPSILON) {
+          activeOpenCount += 1;
+        } else {
+          closedCount += 1;
+        }
+      }
+    }
+
     return {
       count: visibleRows.length,
       totalLabel: formatCurrencyTotal(totalAmount),
       totalQuantityLabel: formatQuantityTotal(totalQuantity),
       totalRealizedPnl,
+      activeQuantityLabel: kind === 'buy' ? formatQuantityTotal(activeQuantity) : null,
+      activeTotalLabel: kind === 'buy' ? formatCurrencyTotal(activeAmount) : null,
+      activeOpenCount: kind === 'buy' ? activeOpenCount : null,
+      closedCount: kind === 'buy' ? closedCount : null,
+      activeUnitCostLabel:
+        kind === 'buy' ? (activeQuantity > POSITION_EPSILON ? formatCurrencyTotal(activeAmount / activeQuantity) : '-') : null,
     };
-  }, [filteredRows, kind]);
+  }, [buyConsumptionById, filteredRows, kind]);
   const draftSellPreview = useMemo(() => {
     if (kind !== 'sell') {
       return null;
@@ -940,6 +1134,45 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       createdAt: draftRow.createdAt,
     });
   }, [buyHistory, kind, rows, sellHistory]);
+  const sortedRows = useMemo(() => {
+    if (kind !== 'sell' || sortColumns.length === 0) {
+      return filteredRows;
+    }
+
+    const draftRows = filteredRows.filter((row) => row.isDraft);
+    const persistedRows = filteredRows.filter((row) => !row.isDraft);
+
+    const sortedPersistedRows = [...persistedRows].sort((left, right) => {
+      for (const sort of sortColumns) {
+        const direction = sort.direction === 'ASC' ? 1 : -1;
+        let result = 0;
+
+        if (sort.columnKey === 'fifoRealizedPnlMxn') {
+          result = compareNullableNumber(getSellRowRealizedPnl(left, draftSellPreview), getSellRowRealizedPnl(right, draftSellPreview));
+        } else if (sort.columnKey === 'fifoRealizedPnlPct') {
+          result = compareNullableNumber(getSellRowRealizedPnlPct(left, draftSellPreview), getSellRowRealizedPnlPct(right, draftSellPreview));
+        } else if (sort.columnKey === 'holdingPeriodYears') {
+          result = compareNullableNumber(
+            getSellRowHoldingPeriodYears(left, draftSellPreview, buyById),
+            getSellRowHoldingPeriodYears(right, draftSellPreview, buyById),
+          );
+        } else if (sort.columnKey === 'fifoRealizedCagr') {
+          result = compareNullableNumber(
+            getSellRowRealizedCagr(left, draftSellPreview, buyById),
+            getSellRowRealizedCagr(right, draftSellPreview, buyById),
+          );
+        }
+
+        if (result !== 0) {
+          return result * direction;
+        }
+      }
+
+      return compareSellRowsForDisplay(left, right, buyById);
+    });
+
+    return [...draftRows, ...sortedPersistedRows];
+  }, [buyById, draftSellPreview, filteredRows, kind, sortColumns]);
 
   function renderTickerHeaderCell(props: RenderHeaderCellProps<TradeGridRow>) {
     return (
@@ -1009,6 +1242,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       frozen: true,
       editable: false,
       renderCell: ({ row }) => {
+        const buyRowLocked = isBuyRowLocked(row);
         const showPrimaryActions = row.isDraft || row.status === 'dirty' || row.status === 'error';
         const actionCount = showPrimaryActions ? 2 : 1;
 
@@ -1049,8 +1283,9 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
               <button
                 type="button"
                 className="grid-action grid-action--delete"
-                title="Eliminar"
-                aria-label="Eliminar"
+                title={buyRowLocked ? 'Bloqueada por ventas FIFO' : 'Eliminar'}
+                aria-label={buyRowLocked ? 'Compra bloqueada por ventas FIFO' : 'Eliminar'}
+                disabled={buyRowLocked}
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
@@ -1177,12 +1412,6 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           },
         },
         {
-          key: 'notes',
-          name: 'Notas',
-          width: NOTES_COLUMN_WIDTH,
-          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
-        },
-        {
           key: 'buyTradeDate',
           name: 'F. compra',
           width: DEFAULT_COLUMN_WIDTH,
@@ -1200,9 +1429,10 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           key: 'fifoRealizedPnlMxn',
           name: 'PnL',
           width: 118,
+          sortable: true,
           editable: false,
           renderCell: ({ row }) => {
-            const pnl = row.fifoRealizedPnlMxn.trim() ? Number(row.fifoRealizedPnlMxn) : null;
+            const pnl = getSellRowRealizedPnl(row, draftSellPreview);
             return pnl != null && Number.isFinite(pnl) ? <span className={getPnlToneClass(pnl)}>{formatCurrencyTotal(pnl)}</span> : '-';
           },
         },
@@ -1210,14 +1440,40 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
           key: 'fifoRealizedPnlPct',
           name: 'PnL %',
           width: 96,
+          sortable: true,
           editable: false,
           renderCell: ({ row }) => {
-            const pnl = row.fifoRealizedPnlMxn.trim() ? Number(row.fifoRealizedPnlMxn) : null;
-            const basis = row.fifoCostBasisMxn.trim() ? Number(row.fifoCostBasisMxn) : null;
-            const pct = pnl != null && basis != null && Number.isFinite(pnl) && Number.isFinite(basis) && basis !== 0 ? pnl / basis : null;
+            const pnl = getSellRowRealizedPnl(row, draftSellPreview);
+            const pct = getSellRowRealizedPnlPct(row, draftSellPreview);
 
             return pnl != null && Number.isFinite(pnl) ? <span className={getPnlToneClass(pnl)}>{formatPercentage(pct)}</span> : '-';
           },
+        },
+        {
+          key: 'holdingPeriodYears',
+          name: 'Años',
+          width: 84,
+          sortable: true,
+          editable: false,
+          renderCell: ({ row }) => formatHoldingPeriodYears(getSellRowHoldingPeriodYears(row, draftSellPreview, buyById)),
+        },
+        {
+          key: 'fifoRealizedCagr',
+          name: 'CAGR',
+          width: 96,
+          sortable: true,
+          editable: false,
+          renderCell: ({ row }) => {
+            const cagr = getSellRowRealizedCagr(row, draftSellPreview, buyById);
+
+            return cagr != null && Number.isFinite(cagr) ? <span className={getPnlToneClass(cagr)}>{formatPercentage(cagr)}</span> : '-';
+          },
+        },
+        {
+          key: 'notes',
+          name: 'Notas',
+          width: NOTES_COLUMN_WIDTH,
+          renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
         },
       ] satisfies readonly Column<TradeGridRow>[];
     }
@@ -1237,6 +1493,17 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         name: 'Cantidad',
         width: AMOUNT_COLUMN_WIDTH,
         renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.000001" placeholder="0" />,
+      },
+      {
+        key: 'soldQuantity',
+        name: 'Vendidos',
+        width: 96,
+        editable: false,
+        renderCell: ({ row }) => {
+          const soldQuantity = row.isDraft ? null : buyConsumptionById.get(row.persistedId ?? row.id)?.soldQuantity ?? 0;
+
+          return soldQuantity != null && soldQuantity > POSITION_EPSILON ? formatEditableNumber(soldQuantity) : '0';
+        },
       },
       {
         key: 'unitPriceOriginal',
@@ -1276,7 +1543,7 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
         renderEditCell: (props) => <InputCellEditor {...props} placeholder="Opcional" />,
       },
     ] satisfies readonly Column<TradeGridRow>[];
-  }, [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, buyById, dateColumnFilter, draftSellPreview, handleDeleteRow, handleRevertRow, kind, panelTitle, persistRow, securityLabelById, securityOptions, tickerFilter]);
+  }, [brokerFilterId, brokerFilterOptions, brokerLabelById, brokerOptions, buyById, buyConsumptionById, dateColumnFilter, draftSellPreview, handleDeleteRow, handleRevertRow, isBuyRowLocked, kind, panelTitle, persistRow, securityLabelById, securityOptions, tickerFilter]);
 
   const currentErrorMessage = rows.find((row) => row.status === 'error')?.errorMessage;
   const draftSellFeedback = draftSellPreview?.errorMessage ?? null;
@@ -1286,13 +1553,13 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
       moveToNextEditableGridCell({
         gridRef,
         columns,
-        rows: filteredRows,
+        rows: sortedRows,
         rowIdx,
         columnIdx,
-        isCellEditable: ({ row, column }) => Boolean(column.renderEditCell) && (kind !== 'sell' || row.isDraft),
+        isCellEditable: ({ row, column }) => Boolean(column.renderEditCell) && (kind !== 'sell' || row.isDraft) && !isBuyRowLocked(row),
       });
     },
-    [columns, filteredRows, kind],
+    [columns, isBuyRowLocked, kind, sortedRows],
   );
 
   function focusCellEditor(rowIdx: number, columnIdx: number, columnKey: string) {
@@ -1332,6 +1599,11 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
             <span className="badge">{visibleSummary.count} regs</span>
             <span className="badge">{visibleSummary.totalLabel}</span>
             {kind === 'buy' ? <span className="badge">{visibleSummary.totalQuantityLabel} títulos</span> : null}
+            {kind === 'buy' && visibleSummary.activeQuantityLabel ? <span className="badge">Act. {visibleSummary.activeQuantityLabel} títulos</span> : null}
+            {kind === 'buy' && visibleSummary.activeTotalLabel ? <span className="badge">Costo act. {visibleSummary.activeTotalLabel}</span> : null}
+            {kind === 'buy' && visibleSummary.activeOpenCount != null ? <span className="badge">Abiertas {visibleSummary.activeOpenCount}</span> : null}
+            {kind === 'buy' && visibleSummary.closedCount != null ? <span className="badge">Cerradas {visibleSummary.closedCount}</span> : null}
+            {kind === 'buy' && visibleSummary.activeUnitCostLabel ? <span className="badge">CP act. {visibleSummary.activeUnitCostLabel}</span> : null}
             {kind === 'sell' && visibleSummary.totalRealizedPnl != null ? (
               <span
                 className={`badge ${getPnlToneClass(visibleSummary.totalRealizedPnl)} badge--pnl`}
@@ -1352,13 +1624,19 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
             <DataGrid
               ref={gridRef}
               columns={columns}
-              rows={filteredRows}
+              rows={sortedRows}
               rowHeight={GRID_ROW_HEIGHT}
               headerRowHeight={FILTER_HEADER_ROW_HEIGHT}
               rowKeyGetter={(row) => row.id}
               onRowsChange={handleRowsChange}
+              sortColumns={sortColumns}
+              onSortColumnsChange={(nextSortColumns) => {
+                setSortColumns(nextSortColumns.filter((sort) => SELL_SORTABLE_COLUMN_KEYS.has(sort.columnKey)));
+              }}
               onCellClick={(args) => {
-                if (kind === 'sell' && !args.row.isDraft) {
+                setSelectedRowId(args.row.id);
+
+                if ((kind === 'sell' && !args.row.isDraft) || isBuyRowLocked(args.row)) {
                   return;
                 }
 
@@ -1367,7 +1645,9 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
                 }
               }}
               onSelectedCellChange={(args) => {
-                if (kind === 'sell' && args.row && !args.row.isDraft) {
+                setSelectedRowId(args.row?.id ?? null);
+
+                if (((kind === 'sell' && args.row && !args.row.isDraft) || (args.row && isBuyRowLocked(args.row)))) {
                   return;
                 }
 
@@ -1384,10 +1664,18 @@ export function StockTradesPage({ kind }: { kind: TradeKind }) {
                 else if (row.status === 'dirty') classNames.push('row-dirty');
                 else classNames.push('row-saved');
 
+                if (isBuyRowClosed(row)) {
+                  classNames.push('row-buy-closed');
+                }
+
+                if (row.id === selectedRowId) {
+                  classNames.push('row-selected-soft');
+                }
+
                 if (kind === 'sell' && !row.isDraft && row.sellGroupId) {
-                  const rowIndex = filteredRows.findIndex((candidate) => candidate.id === row.id);
-                  const previousRow = rowIndex > 0 ? filteredRows[rowIndex - 1] : null;
-                  const nextRow = rowIndex >= 0 && rowIndex < filteredRows.length - 1 ? filteredRows[rowIndex + 1] : null;
+                  const rowIndex = sortedRows.findIndex((candidate) => candidate.id === row.id);
+                  const previousRow = rowIndex > 0 ? sortedRows[rowIndex - 1] : null;
+                  const nextRow = rowIndex >= 0 && rowIndex < sortedRows.length - 1 ? sortedRows[rowIndex + 1] : null;
                   const isGroupStart = previousRow?.sellGroupId !== row.sellGroupId;
                   const isGroupEnd = nextRow?.sellGroupId !== row.sellGroupId;
 
