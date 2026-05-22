@@ -16,6 +16,17 @@ export type StockSellMovement = BaseMovement & {
   brokerId?: string | null;
   stockBuyId?: string | null;
   sellGroupId?: string | null;
+  fifoCostBasisMxn?: number | null;
+};
+
+export type BuyConsumptionMetrics = {
+  buyId: string;
+  soldQuantity: number;
+  remainingQuantity: number;
+  soldFifoCostBasisMxn: number;
+  remainingFifoCostBasisMxn: number;
+  isUsedInSell: boolean;
+  isClosed: boolean;
 };
 
 export type FifoSellMatch = {
@@ -30,6 +41,8 @@ export type FifoSellMatch = {
   fifoCostBasisMxn: number;
   fifoRealizedPnlMxn: number;
   fifoRealizedPnlPct: number | null;
+  holdingPeriodYears: number | null;
+  fifoRealizedCagr: number | null;
 };
 
 export type FifoSellPreview = {
@@ -38,6 +51,8 @@ export type FifoSellPreview = {
   fifoCostBasisMxn: number | null;
   fifoRealizedPnlMxn: number | null;
   fifoRealizedPnlPct: number | null;
+  holdingPeriodYears: number | null;
+  fifoRealizedCagr: number | null;
   matches: FifoSellMatch[];
   errorMessage: string | null;
 };
@@ -124,6 +139,90 @@ function round6(value: number) {
   const normalized = Math.abs(value) < EPSILON ? 0 : value;
 
   return Number(normalized.toFixed(6));
+}
+
+function getUtcDateValue(date: string) {
+  const [yearText, monthText, dayText] = date.split('-');
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+
+  if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) {
+    return null;
+  }
+
+  return Date.UTC(year, month - 1, day);
+}
+
+export function calculateRealizedCagr(
+  buyTradeDate: string,
+  sellTradeDate: string,
+  fifoCostBasisMxn: number,
+  totalAmountMxn: number,
+) {
+  if (fifoCostBasisMxn <= EPSILON || totalAmountMxn <= 0) {
+    return null;
+  }
+
+  const elapsedYears = calculateHoldingPeriodYears(buyTradeDate, sellTradeDate);
+  if (elapsedYears == null || elapsedYears <= 0) {
+    return null;
+  }
+
+  return round6(Math.pow(totalAmountMxn / fifoCostBasisMxn, 1 / elapsedYears) - 1);
+}
+
+export function calculateHoldingPeriodYears(buyTradeDate: string, sellTradeDate: string) {
+
+  const buyUtcValue = getUtcDateValue(buyTradeDate);
+  const sellUtcValue = getUtcDateValue(sellTradeDate);
+  if (buyUtcValue == null || sellUtcValue == null) {
+    return null;
+  }
+
+  const elapsedDays = (sellUtcValue - buyUtcValue) / 86400000;
+  if (elapsedDays <= 0) {
+    return null;
+  }
+
+  const elapsedYears = elapsedDays / 365.2425;
+  if (elapsedYears <= 0) {
+    return null;
+  }
+
+  return round6(elapsedYears);
+}
+
+function calculateWeightedHoldingPeriodYears(matches: FifoSellMatch[]) {
+  let weightedYears = 0;
+  let weightedBasis = 0;
+
+  for (const match of matches) {
+    if (match.holdingPeriodYears == null || match.fifoCostBasisMxn <= EPSILON) {
+      continue;
+    }
+
+    weightedYears += match.holdingPeriodYears * match.fifoCostBasisMxn;
+    weightedBasis += match.fifoCostBasisMxn;
+  }
+
+  return weightedBasis > EPSILON ? round6(weightedYears / weightedBasis) : null;
+}
+
+function calculateWeightedRealizedCagr(matches: FifoSellMatch[]) {
+  let weightedCagr = 0;
+  let weightedBasis = 0;
+
+  for (const match of matches) {
+    if (match.fifoRealizedCagr == null || match.fifoCostBasisMxn <= EPSILON) {
+      continue;
+    }
+
+    weightedCagr += match.fifoRealizedCagr * match.fifoCostBasisMxn;
+    weightedBasis += match.fifoCostBasisMxn;
+  }
+
+  return weightedBasis > EPSILON ? round6(weightedCagr / weightedBasis) : null;
 }
 
 function compareMovementOrder(left: OrderedMovement | CandidateSell, right: OrderedMovement | CandidateSell) {
@@ -321,6 +420,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       fifoCostBasisMxn: null,
       fifoRealizedPnlMxn: null,
       fifoRealizedPnlPct: null,
+      holdingPeriodYears: null,
+      fifoRealizedCagr: null,
       matches: [],
       errorMessage: snapshot.errorMessage,
     };
@@ -340,6 +441,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       fifoCostBasisMxn: null,
       fifoRealizedPnlMxn: null,
       fifoRealizedPnlPct: null,
+      holdingPeriodYears: null,
+      fifoRealizedCagr: null,
       matches: [],
       errorMessage: null,
     };
@@ -352,6 +455,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       fifoCostBasisMxn: null,
       fifoRealizedPnlMxn: null,
       fifoRealizedPnlPct: null,
+      holdingPeriodYears: null,
+      fifoRealizedCagr: null,
       matches: [],
       errorMessage: 'La venta excede la cantidad disponible para este ticker en ese broker.',
     };
@@ -365,6 +470,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       fifoCostBasisMxn: null,
       fifoRealizedPnlMxn: null,
       fifoRealizedPnlPct: null,
+      holdingPeriodYears: null,
+      fifoRealizedCagr: null,
       matches: [],
       errorMessage: consumption.errorMessage ?? 'No fue posible consumir los lotes FIFO para la venta.',
     };
@@ -397,6 +504,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
       totalAmountMxn,
       fifoRealizedPnlMxn,
       fifoRealizedPnlPct: match.fifoCostBasisMxn > EPSILON ? round6(fifoRealizedPnlMxn / match.fifoCostBasisMxn) : null,
+      holdingPeriodYears: calculateHoldingPeriodYears(match.buyTradeDate, candidateSell.tradeDate),
+      fifoRealizedCagr: calculateRealizedCagr(match.buyTradeDate, candidateSell.tradeDate, match.fifoCostBasisMxn, totalAmountMxn),
     } satisfies FifoSellMatch;
   });
 
@@ -409,6 +518,8 @@ export function previewFifoSell(buys: StockBuyMovement[], sells: StockSellMoveme
     fifoCostBasisMxn,
     fifoRealizedPnlMxn,
     fifoRealizedPnlPct: fifoCostBasisMxn > EPSILON ? round6(fifoRealizedPnlMxn / fifoCostBasisMxn) : null,
+    holdingPeriodYears: calculateWeightedHoldingPeriodYears(matches),
+    fifoRealizedCagr: calculateWeightedRealizedCagr(matches),
     matches,
     errorMessage: null,
   };
@@ -474,4 +585,51 @@ export function summarizeOpenHoldings(buys: StockBuyMovement[], sells: StockSell
   }
 
   return holdings.sort((left, right) => left.securityId.localeCompare(right.securityId));
+}
+
+export function summarizeBuyConsumption(buys: StockBuyMovement[], sells: StockSellMovement[]) {
+  const sellsByBuyId = new Map<string, StockSellMovement[]>();
+
+  for (const sell of sells) {
+    if (!sell.stockBuyId) {
+      continue;
+    }
+
+    const groupedSells = sellsByBuyId.get(sell.stockBuyId) ?? [];
+    groupedSells.push(sell);
+    sellsByBuyId.set(sell.stockBuyId, groupedSells);
+  }
+
+  return buys
+    .map((buy) => {
+      const sellsForBuy = sellsByBuyId.get(buy.id) ?? [];
+      const fallbackUnitCostMxn = buy.quantity > EPSILON ? buy.totalAmountMxn / buy.quantity : 0;
+
+      let soldQuantity = 0;
+      let soldFifoCostBasisMxn = 0;
+
+      for (const sell of sellsForBuy) {
+        soldQuantity += sell.quantity;
+        soldFifoCostBasisMxn +=
+          sell.fifoCostBasisMxn != null && Number.isFinite(sell.fifoCostBasisMxn)
+            ? sell.fifoCostBasisMxn
+            : fallbackUnitCostMxn * sell.quantity;
+      }
+
+      const normalizedSoldQuantity = round6(Math.min(buy.quantity, soldQuantity));
+      const normalizedSoldFifoCostBasisMxn = round6(Math.min(buy.totalAmountMxn, soldFifoCostBasisMxn));
+      const remainingQuantity = round6(Math.max(0, buy.quantity - normalizedSoldQuantity));
+      const remainingFifoCostBasisMxn = round6(Math.max(0, buy.totalAmountMxn - normalizedSoldFifoCostBasisMxn));
+
+      return {
+        buyId: buy.id,
+        soldQuantity: normalizedSoldQuantity,
+        remainingQuantity,
+        soldFifoCostBasisMxn: normalizedSoldFifoCostBasisMxn,
+        remainingFifoCostBasisMxn,
+        isUsedInSell: normalizedSoldQuantity > EPSILON,
+        isClosed: remainingQuantity <= EPSILON,
+      } satisfies BuyConsumptionMetrics;
+    })
+    .sort((left, right) => left.buyId.localeCompare(right.buyId));
 }

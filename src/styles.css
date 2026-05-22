@@ -1946,6 +1946,14 @@ textarea {
   background: #fff8f8;
 }
 
+.row-buy-closed {
+  background: #f3f4f6;
+}
+
+.row-buy-closed.row-selected-soft .rdg-cell {
+  background: #e5e7eb;
+}
+
 .row-duplicate {
   background: #fffbea;
 }
