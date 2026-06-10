@@ -1,0 +1,67 @@
+{
+  "staging-demo": {
+    "expense_categories": [
+      { "name": "Comida", "description": "Restaurantes, super y antojos." },
+      { "name": "Transporte", "description": "Gasolina, apps y casetas." },
+      { "name": "Servicios", "description": "Luz, internet, telefono y similares." },
+      { "name": "Salud", "description": "Consultas, medicamentos y estudios." }
+    ],
+    "income_sources": [
+      { "name": "Salario", "description": "Ingreso fijo principal." },
+      { "name": "Honorarios", "description": "Servicios profesionales y proyectos." },
+      { "name": "Renta", "description": "Ingreso por arrendamiento u hospedaje." }
+    ],
+    "payment_instruments": [
+      { "name": "Efectivo", "instrument_type": "cash", "description": "Gastos pagados al momento." },
+      { "name": "Débito BBVA", "instrument_type": "debit_card", "description": "Tarjeta de débito principal." },
+      { "name": "Crédito HSBC", "instrument_type": "credit_card", "description": "Tarjeta para compras a crédito." }
+    ],
+    "stores": [
+      { "name": "Amazon", "description": "Compras en línea." },
+      { "name": "Mercado Libre", "description": "Marketplace general." },
+      { "name": "Walmart", "description": "Supermercado y despensa." },
+      { "name": "Costco", "description": "Compras al mayoreo." }
+    ],
+    "unit_of_measures": [
+      { "name": "pieza", "description": "Unidad individual." },
+      { "name": "kg", "description": "Kilogramo." },
+      { "name": "litro", "description": "Litro." },
+      { "name": "servicio", "description": "Servicio contratado." }
+    ],
+    "brokers": [
+      { "name": "GBM", "description": "Broker principal para el demo.", "default_fee_factor": 0.0025 },
+      { "name": "Actinver", "description": "Broker alterno para comparar operaciones.", "default_fee_factor": 0.0025 }
+    ],
+    "investment_entities": [
+      { "name": "Cetes", "description": "Instrumentos gubernamentales.", "is_closed": false },
+      { "name": "Nu", "description": "Cuenta de rendimiento a la vista.", "is_closed": false },
+      { "name": "Mercado Pago", "description": "Saldo con rendimiento.", "is_closed": false }
+    ],
+    "securities": [
+      {
+        "ticker": "VOO",
+        "company_name": "Vanguard S&P 500 ETF",
+        "exchange_code": "NYSEARCA",
+        "instrument_type": "etf",
+        "currency_code": "USD",
+        "country_code": "US"
+      },
+      {
+        "ticker": "MSFT",
+        "company_name": "Microsoft Corporation",
+        "exchange_code": "NASDAQ",
+        "instrument_type": "stock",
+        "currency_code": "USD",
+        "country_code": "US"
+      },
+      {
+        "ticker": "FUNO11",
+        "company_name": "Fibra Uno",
+        "exchange_code": "BMV",
+        "instrument_type": "fibra",
+        "currency_code": "MXN",
+        "country_code": "MX"
+      }
+    ]
+  }
+}

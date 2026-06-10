@@ -125,10 +125,8 @@ Validacion:
 - confirmar columnas derivadas y catalogos esperados
 
 Migraciones actuales del repo:
-- `supabase/migrations/001_init.sql`
-- `supabase/migrations/002_auth_rls.sql`
-- `supabase/migrations/003_unit_of_measures.sql`
-- `supabase/migrations/004_expense_subtotal_semantics.sql`
+- revisar `supabase/migrations/` porque la secuencia sigue creciendo
+- al momento de este documento llega hasta `supabase/migrations/022_dividend_import_source_ids.sql`
 
 ### 4. Cargar datos base en staging
 Minimo requerido:
@@ -142,7 +140,8 @@ Sin estos catalogos, la captura operativa queda incompleta.
 
 Opciones:
 - usar inserts manuales desde Supabase Studio
-- crear un script o seed SQL controlado si luego quieres repetir el proceso
+- usar `pnpm run seed:catalogs:staging-demo -- --email <demo@correo.com>` para preparar una cuenta demo de staging
+- crear un seed o preset adicional si luego necesitas otros perfiles de datos
 
 ### 5. Crear proyecto Cloudflare Pages para staging
 1. En Cloudflare Pages, conectar el repositorio GitHub.
