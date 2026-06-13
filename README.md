@@ -101,10 +101,8 @@ Flujo recomendado:
 - usar `pnpm run supabase:reset` cuando necesites reconstruir el esquema desde migraciones
 
 Migraciones actuales del proyecto:
-- `supabase/migrations/001_init.sql`
-- `supabase/migrations/002_auth_rls.sql`
-- `supabase/migrations/003_unit_of_measures.sql`
-- `supabase/migrations/004_expense_subtotal_semantics.sql`
+- revisar `supabase/migrations/` porque la secuencia sigue creciendo
+- al momento de este documento llega hasta `supabase/migrations/022_dividend_import_source_ids.sql`
 
 ## Autenticacion y RLS
 - la app ahora requiere iniciar sesion antes de acceder a los modulos
@@ -121,10 +119,23 @@ La migracion base actual vive en `supabase/migrations/001_init.sql` e incluye ca
 - `pnpm run dev:remote`
 - `pnpm run build`
 - `pnpm run preview`
+- `pnpm run repo:doctor`
+- `pnpm run repo:doctor:json`
+- `pnpm run migration:new -- <nombre>`
+- `pnpm run migration:review [ruta-o-archivo]`
+- `pnpm run seed:catalogs:staging-demo -- --email <demo@correo.com>`
+- `pnpm run mcp:supabase:readonly`
 - `pnpm run supabase:start`
 - `pnpm run supabase:status`
 - `pnpm run supabase:stop`
 - `pnpm run supabase:reset`
+
+## Tooling del repositorio
+- `pnpm run repo:doctor` valida drift comun del repo: migraciones, referencias documentales, scripts Node apuntando a archivos existentes, rutas vs navegación, catálogos, tours y configuración de OpenCode.
+- `pnpm run migration:new -- <nombre>` crea la siguiente migracion numerada con una plantilla minima.
+- `pnpm run migration:review` revisa una migracion con reglas ligeras de RLS, grants, policies e indices.
+- `pnpm run seed:catalogs:staging-demo -- --email <demo@correo.com>` precarga catalogos base para una cuenta demo de staging. Requiere `SUPABASE_SERVICE_ROLE_KEY` en el entorno y usa `.env.remote` para tomar `VITE_SUPABASE_URL`.
+- `pnpm run mcp:supabase:readonly` inicia un MCP local solo lectura para inspeccionar esquema, policies, indices y lecturas acotadas de datos. Para consultas a Postgres remoto requiere `SUPABASE_READONLY_DB_URL` o `SUPABASE_REMOTE_DB_PASSWORD`.
 
 ## Probar Contra Supabase Remoto
 - crea `.env.remote` con `VITE_SUPABASE_URL` y `VITE_SUPABASE_ANON_KEY` del proyecto remoto
