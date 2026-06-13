@@ -30,7 +30,6 @@ type CatalogDbRow = {
   industry?: string | null;
   exchange_code?: string | null;
   country_code?: string | null;
-  currency_code?: 'MXN' | 'USD' | null;
   website_url?: string | null;
   default_fee_factor?: number | null;
   created_at: string;
@@ -53,7 +52,6 @@ type CatalogGridRow = {
   industry: string;
   exchangeCode: string;
   countryCode: string;
-  currencyCode: string;
   websiteUrl: string;
   defaultFeeFactor: string;
   notes: string;
@@ -73,11 +71,6 @@ const securityInstrumentTypeOptions: readonly SelectOption[] = [
   { value: 'adr', label: 'adr' },
   { value: 'fund', label: 'fund' },
   { value: 'other', label: 'other' },
-];
-
-const currencyOptions: readonly SelectOption[] = [
-  { value: 'MXN', label: 'MXN' },
-  { value: 'USD', label: 'USD' },
 ];
 
 const activeOptions: readonly SelectOption[] = [
@@ -124,7 +117,6 @@ function createDraftCatalogRow(config: CatalogConfig): CatalogGridRow {
     industry: '',
     exchangeCode: '',
     countryCode: '',
-    currencyCode: config.kind === 'securities' ? 'USD' : '',
     websiteUrl: '',
     defaultFeeFactor: config.kind === 'brokers' ? '0' : '',
     notes: '',
@@ -149,7 +141,6 @@ function toCatalogGridRow(row: CatalogDbRow, config: CatalogConfig): CatalogGrid
     industry: row.industry ?? '',
     exchangeCode: row.exchange_code ?? '',
     countryCode: row.country_code ?? '',
-    currencyCode: row.currency_code ?? (config.kind === 'securities' ? 'USD' : ''),
     websiteUrl: row.website_url ?? '',
     defaultFeeFactor: row.default_fee_factor == null ? (config.kind === 'brokers' ? '0' : '') : String(Number(row.default_fee_factor)),
     notes: row.notes ?? '',
@@ -158,7 +149,7 @@ function toCatalogGridRow(row: CatalogDbRow, config: CatalogConfig): CatalogGrid
 
 function canSaveDraftCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
   if (config.kind === 'securities') {
-    return Boolean(row.ticker.trim() && row.companyName.trim() && row.instrumentType && row.currencyCode);
+    return Boolean(row.ticker.trim() && row.companyName.trim() && row.instrumentType && row.exchangeCode.trim());
   }
 
   if (config.kind === 'payment_instruments') {
@@ -182,8 +173,8 @@ function validateCatalogRow(row: CatalogGridRow, config: CatalogConfig) {
       return 'Selecciona el tipo de instrumento.';
     }
 
-    if (row.currencyCode !== 'MXN' && row.currencyCode !== 'USD') {
-      return 'Selecciona una moneda válida.';
+    if (!row.exchangeCode.trim()) {
+      return 'La bolsa es obligatoria.';
     }
 
     if (row.websiteUrl.trim()) {
@@ -232,7 +223,7 @@ function formatCatalogIssuesMessage(row: CatalogGridRow, config: CatalogConfig) 
     if (!row.ticker.trim()) issues.push('captura el ticker');
     if (!row.companyName.trim()) issues.push('captura la empresa');
     if (!row.instrumentType) issues.push('selecciona el tipo');
-    if (!row.currencyCode) issues.push('selecciona la moneda');
+    if (!row.exchangeCode.trim()) issues.push('captura la bolsa');
   } else {
     if (!row.name.trim()) issues.push('captura el nombre');
     if (config.kind === 'payment_instruments' && !row.instrumentType) issues.push('selecciona el tipo de instrumento');
@@ -250,6 +241,7 @@ export function CatalogsPage() {
   const { catalogKey } = useParams<{ catalogKey?: string }>();
   const [rows, setRows] = useState<CatalogGridRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const rowsRef = useRef<CatalogGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, CatalogGridRow>>(new Map());
@@ -310,6 +302,43 @@ export function CatalogsPage() {
   useEffect(() => {
     void loadRows();
   }, [loadRows]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadSecurityPermissions() {
+      if (!supabase || !isSupabaseConfigured()) {
+        if (!cancelled) {
+          setIsAdmin(false);
+        }
+        return;
+      }
+
+      const { data, error } = await supabase.rpc('is_admin');
+
+      if (!cancelled) {
+        setIsAdmin(!error && data === true);
+      }
+    }
+
+    void loadSecurityPermissions();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function isSecurityRowReadOnly(row: CatalogGridRow) {
+    return selectedCatalog.kind === 'securities' && !row.isDraft && !isAdmin;
+  }
+
+  function canDeleteCatalogRow(row: CatalogGridRow) {
+    if (row.isDraft) {
+      return true;
+    }
+
+    return selectedCatalog.kind !== 'securities' || isAdmin;
+  }
 
   function commitActiveEditorAndRun(action: () => void) {
     const activeElement = document.activeElement;
@@ -380,6 +409,11 @@ export function CatalogsPage() {
       let payload: Record<string, string | boolean | number | null>;
 
       if (selectedCatalog.kind === 'securities') {
+        if (!row.isDraft && !isAdmin) {
+          setErrorMessage('Solo un admin puede editar valores bursátiles existentes.');
+          return;
+        }
+
         payload = {
           ticker: normalizedRow.ticker,
           company_name: normalizedRow.companyName.trim(),
@@ -388,7 +422,6 @@ export function CatalogsPage() {
           exchange_code: normalizedRow.exchangeCode || null,
           instrument_type: normalizedRow.instrumentType,
           country_code: normalizedRow.countryCode || null,
-          currency_code: normalizedRow.currencyCode,
           website_url: normalizedRow.websiteUrl.trim() || null,
           is_active: normalizedRow.isActive === 'true',
           notes: normalizedRow.notes.trim() || null,
@@ -450,6 +483,11 @@ export function CatalogsPage() {
         return;
       }
 
+      if (!canDeleteCatalogRow(row)) {
+        setErrorMessage('Solo un admin puede eliminar valores bursátiles.');
+        return;
+      }
+
       if (!window.confirm('¿Eliminar este registro?')) {
         return;
       }
@@ -457,7 +495,11 @@ export function CatalogsPage() {
       const { error } = await supabase.from(selectedCatalog.key).delete().eq('id', row.persistedId);
 
       if (error) {
-        setErrorMessage(`No fue posible eliminar el registro: ${error.message}`);
+        setErrorMessage(
+          selectedCatalog.kind === 'securities'
+            ? `No fue posible eliminar el valor bursátil: ${error.message}. Si ya tiene movimientos asociados, desactívalo.`
+            : `No fue posible eliminar el registro: ${error.message}`,
+        );
         return;
       }
 
@@ -502,6 +544,16 @@ export function CatalogsPage() {
     }
 
     const editedRow = normalizeCatalogGridRow(nextRows[rowIndex], selectedCatalog.kind);
+
+    if (isSecurityRowReadOnly(editedRow)) {
+      const persistedRow = persistedRowsRef.current.get(editedRow.id) ?? editedRow;
+      const restoredRows = nextRows.map((row, index) => (index === rowIndex ? persistedRow : row));
+      rowsRef.current = restoredRows;
+      setRows(restoredRows);
+      setErrorMessage('Solo un admin puede editar valores bursátiles existentes.');
+      return;
+    }
+
     const validationMessage = editedRow.isDraft ? null : validateCatalogRow(editedRow, selectedCatalog);
     const updatedRows: CatalogGridRow[] = nextRows.map((row, index) => {
       if (index !== rowIndex) {
@@ -584,7 +636,7 @@ export function CatalogsPage() {
                 </button>
               </>
             ) : null}
-            {!showPrimaryActions ? (
+            {!showPrimaryActions && canDeleteCatalogRow(row) ? (
               <button
                 type="button"
                 className={`grid-action ${row.isDraft ? 'grid-action--clear' : 'grid-action--delete'}`}
@@ -654,13 +706,6 @@ export function CatalogsPage() {
           width: 82,
           renderCell: ({ row }) => row.countryCode || '-',
           renderEditCell: (props) => <InputCellEditor {...props} placeholder="US" />,
-        },
-        {
-          key: 'currencyCode',
-          name: 'Moneda',
-          width: 88,
-          renderCell: ({ row }) => row.currencyCode || '-',
-          renderEditCell: (props) => <SelectCellEditor {...props} options={currencyOptions} />,
         },
         {
           key: 'websiteUrl',
@@ -816,12 +861,12 @@ export function CatalogsPage() {
                 rowKeyGetter={(row) => row.id}
                 onRowsChange={handleRowsChange}
                 onCellClick={(args) => {
-                  if (args.column.renderEditCell) {
+                  if (args.column.renderEditCell && !isSecurityRowReadOnly(args.row as CatalogGridRow)) {
                     args.selectCell(true);
                   }
                 }}
                 onSelectedCellChange={(args) => {
-                  if (args.row && args.column.renderEditCell) {
+                  if (args.row && args.column.renderEditCell && !isSecurityRowReadOnly(args.row as CatalogGridRow)) {
                     focusCellEditor(args.rowIdx, args.column.idx, args.column.key);
                   }
                 }}
