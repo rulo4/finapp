@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { NavigationTab } from '../config/navigation';
@@ -5,9 +6,10 @@ import type { NavigationTab } from '../config/navigation';
 type TabbedSectionLayoutProps = {
   tabs: readonly NavigationTab[];
   ariaLabel: string;
+  headerContent?: ReactNode;
 };
 
-export function TabbedSectionLayout({ tabs, ariaLabel }: TabbedSectionLayoutProps) {
+export function TabbedSectionLayout({ tabs, ariaLabel, headerContent }: TabbedSectionLayoutProps) {
   const { pathname } = useLocation();
   const activeTab = tabs.find((tab) => ((tab.end ?? true) ? pathname === tab.to : pathname === tab.to || pathname.startsWith(`${tab.to}/`))) ?? tabs[0];
 
@@ -37,9 +39,13 @@ export function TabbedSectionLayout({ tabs, ariaLabel }: TabbedSectionLayoutProp
             })}
           </div>
 
-          <div className="section-tabs__current" aria-live="polite">
-            {activeTab.label}
-          </div>
+          {headerContent ? (
+            <div className="section-tabs__aux">{headerContent}</div>
+          ) : (
+            <div className="section-tabs__current" aria-live="polite">
+              {activeTab.label}
+            </div>
+          )}
         </div>
       </section>
 

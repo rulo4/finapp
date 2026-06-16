@@ -214,7 +214,7 @@ export function computeCreditCardPeriods({
     const bonusRewardPoints = normalizeAmount(
       periodActivity.filter((item) => item.kind === 'points').reduce((sum, item) => sum + item.points, 0),
     );
-    const calculatedClosingBalanceMxn = normalizeAmount(openingBalanceMxn + spendMxn - paymentMxn - bonusStatementCreditMxn);
+    const calculatedClosingBalanceMxn = normalizeAmount(openingBalanceMxn + spendMxn - paymentMxn);
     const reconciliation = reconciliationByDate.get(endDate) ?? null;
     const closingBalanceMxn = reconciliation ? reconciliation.adjustedClosingBalanceMxn : calculatedClosingBalanceMxn;
     const dueDate = formatLocalDateAsIsoString(addDays(boundaries[index + 1], graceDays));

@@ -10,7 +10,7 @@ import {
   faRotateLeft,
   faTrash,
 } from '@fortawesome/free-solid-svg-icons';
-import { DataGrid, type Column, type DataGridHandle } from 'react-data-grid';
+import { DataGrid, type Column, type DataGridHandle, type SortColumn } from 'react-data-grid';
 import { InputCellEditor, SelectCellEditor, type SelectOption } from '../features/shared/gridEditors';
 import { GridEditorNavigationProvider, moveToNextEditableGridCell } from '../features/shared/gridNavigation';
 import { computeCreditCardPeriods, type CreditCardExpense, type CreditCardPayment, type CreditCardStatementReconciliation } from '../features/credit-cards/statementMath';
@@ -99,6 +99,17 @@ const CONFIG_ACTION_COLUMN_WIDTH = 78;
 const PAYMENT_ACTION_COLUMN_WIDTH = 78;
 const RECON_ACTION_COLUMN_WIDTH = 78;
 const GRID_ROW_HEIGHT = 30;
+const CONFIG_SORTABLE_COLUMN_KEYS = new Set<string>(['instrumentName', 'statementDay', 'spendTargetMxn']);
+
+function compareNullableNumberString(left: string, right: string) {
+  const leftValue = Number(left || '0');
+  const rightValue = Number(right || '0');
+
+  const normalizedLeftValue = Number.isFinite(leftValue) ? leftValue : 0;
+  const normalizedRightValue = Number.isFinite(rightValue) ? rightValue : 0;
+
+  return normalizedLeftValue - normalizedRightValue;
+}
 
 function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -297,6 +308,9 @@ function getActivityTone(kind: ReturnType<typeof computeCreditCardPeriods>['curr
 
 export function CreditCardsPage() {
   const [configRows, setConfigRows] = useState<CreditCardConfigGridRow[]>([]);
+  const [configSortColumns, setConfigSortColumns] = useState<readonly SortColumn[]>([
+    { columnKey: 'statementDay', direction: 'ASC' },
+  ]);
   const [paymentRows, setPaymentRows] = useState<CreditCardPaymentGridRow[]>([createDraftPaymentRow()]);
   const [reconciliationRows, setReconciliationRows] = useState<CreditCardReconciliationGridRow[]>([]);
   const [selectedInstrumentId, setSelectedInstrumentId] = useState('');
@@ -380,6 +394,43 @@ export function CreditCardsPage() {
     () => configRows.find((row) => row.paymentInstrumentId === selectedInstrumentId) ?? null,
     [configRows, selectedInstrumentId],
   );
+
+  const sortedConfigRows = useMemo(() => {
+    if (configSortColumns.length === 0) {
+      return configRows;
+    }
+
+    return [...configRows].sort((left, right) => {
+      for (const sort of configSortColumns) {
+        const direction = sort.direction === 'ASC' ? 1 : -1;
+
+        if (sort.columnKey === 'instrumentName') {
+          const result = left.instrumentName.localeCompare(right.instrumentName, 'es-MX');
+          if (result !== 0) {
+            return result * direction;
+          }
+          continue;
+        }
+
+        if (sort.columnKey === 'statementDay') {
+          const result = compareNullableNumberString(left.statementDay, right.statementDay);
+          if (result !== 0) {
+            return result * direction;
+          }
+          continue;
+        }
+
+        if (sort.columnKey === 'spendTargetMxn') {
+          const result = compareNullableNumberString(left.spendTargetMxn, right.spendTargetMxn);
+          if (result !== 0) {
+            return result * direction;
+          }
+        }
+      }
+
+      return left.instrumentName.localeCompare(right.instrumentName, 'es-MX');
+    });
+  }, [configRows, configSortColumns]);
 
   const loadDetailData = useCallback(async () => {
     if (!supabase || !isSupabaseConfigured()) {
@@ -854,7 +905,7 @@ export function CreditCardsPage() {
     const progressLabel = spendTarget > 0 ? `${Math.round((currentSpend / spendTarget) * 100)}%` : 'Off';
     const spendTone = currentSpend >= spendTarget ? 'ok' : 'warn';
     const lastStatementBalance = computation.currentPeriod?.openingBalanceMxn ?? computation.lastClosedPeriod?.closingBalanceMxn ?? 0;
-    const lastStatementCredits = (computation.currentPeriod?.paymentMxn ?? 0) + (computation.currentPeriod?.bonusStatementCreditMxn ?? 0);
+    const lastStatementCredits = computation.currentPeriod?.paymentMxn ?? 0;
     const dueTone = computation.lastClosedPeriod
       ? lastStatementCredits >= lastStatementBalance ? 'ok' : 'warn'
       : undefined;
@@ -946,12 +997,14 @@ export function CreditCardsPage() {
       name: 'Tarjeta',
       width: 180,
       editable: false,
+      sortable: true,
       renderCell: ({ row }) => row.instrumentName,
     },
     {
       key: 'statementDay',
       name: 'Corte',
       width: 84,
+      sortable: true,
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="1" step="1" placeholder="20" />,
     },
     {
@@ -964,6 +1017,7 @@ export function CreditCardsPage() {
       key: 'spendTargetMxn',
       name: 'Meta',
       width: 100,
+      sortable: true,
       renderCell: ({ row }) => formatCurrencyValue(Number(row.spendTargetMxn || '0')),
       renderEditCell: (props) => <InputCellEditor {...props} inputType="number" min="0" step="0.01" placeholder="0" />,
     },
@@ -1215,12 +1269,12 @@ export function CreditCardsPage() {
       moveToNextEditableGridCell({
         gridRef: configGridRef,
         columns: configColumns,
-        rows: configRows,
+        rows: sortedConfigRows,
         rowIdx,
         columnIdx,
       });
     },
-    [configColumns, configRows],
+    [configColumns, sortedConfigRows],
   );
 
   const handleNavigatePaymentGrid = useCallback(
@@ -1277,11 +1331,15 @@ export function CreditCardsPage() {
             <DataGrid
               ref={configGridRef}
               columns={configColumns}
-              rows={configRows}
+              rows={sortedConfigRows}
               rowHeight={GRID_ROW_HEIGHT}
               headerRowHeight={GRID_ROW_HEIGHT}
               rowKeyGetter={(row) => row.id}
               onRowsChange={handleConfigRowsChange}
+              sortColumns={configSortColumns}
+              onSortColumnsChange={(nextSortColumns) => {
+                setConfigSortColumns(nextSortColumns.filter((sort) => CONFIG_SORTABLE_COLUMN_KEYS.has(sort.columnKey)));
+              }}
               onCellClick={(args) => {
                 setSelectedInstrumentId(args.row.paymentInstrumentId);
                 if (args.column.renderEditCell) {

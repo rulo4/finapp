@@ -4,6 +4,7 @@ dist/
 .env
 .env.local
 .env.remote
+supabase/functions/.env
 supabase/.temp/
 .DS_Store
 *.log
