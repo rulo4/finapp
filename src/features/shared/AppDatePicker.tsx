@@ -173,7 +173,7 @@ export function AppDatePicker({
       showPopperArrow={false}
       customInput={<DateInput className={className} aria-label={ariaLabel} disabled={disabled} enterKeyHint={enterKeyHint} />}
       calendarClassName="app-date-picker__calendar"
-      calendarStartDay={1}
+      calendarStartDay={0}
     />
   );
 }
