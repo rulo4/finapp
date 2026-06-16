@@ -498,10 +498,17 @@ export function StockHoldingsPage() {
   );
 
   const handleRefreshAllQuotes = useCallback(async () => {
+    const rowsToRefresh = rows.filter((row) => row.quoteStatus !== 'Actualizado');
+
+    if (rowsToRefresh.length === 0) {
+      setFeedback('Todas las posiciones ya tienen precio actualizado.');
+      return;
+    }
+
     setIsRefreshingAllQuotes(true);
 
     try {
-      await refreshQuotes(rows.map(buildQuoteRequestItem));
+      await refreshQuotes(rowsToRefresh.map(buildQuoteRequestItem));
     } finally {
       setIsRefreshingAllQuotes(false);
     }
