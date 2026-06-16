@@ -5,6 +5,7 @@ import { useAuth } from './features/auth/AuthContext';
 import { AuthPage } from './pages/AuthPage';
 import { AppShell } from './layouts/AppShell';
 import { TabbedSectionLayout } from './layouts/TabbedSectionLayout';
+import { InvestmentsFxPanel } from './features/investments/InvestmentsFxPanel';
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage').then((module) => ({ default: module.DashboardPage })));
 const IncomePage = lazy(() => import('./pages/IncomePage').then((module) => ({ default: module.IncomePage })));
@@ -80,7 +81,7 @@ export default function App() {
         />
         <Route
           path="/investments"
-          element={<TabbedSectionLayout tabs={investmentTabs} ariaLabel="Inversiones" />}
+          element={<TabbedSectionLayout tabs={investmentTabs} ariaLabel="Inversiones" headerContent={<InvestmentsFxPanel />} />}
         >
           <Route
             index
