@@ -1,19 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { faArrowRightArrowLeft, faDollarSign } from '@fortawesome/free-solid-svg-icons';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-
-type FxApiResponse = {
-  base: string;
-  target: string;
-  rate: number;
-  timestamp: string;
-};
+import { getUsdMxnRateRefreshDelay, loadUsdMxnRate, readUsdMxnRateCache, USD_MXN_RETRY_INTERVAL_MS, type UsdMxnRateCacheEntry } from './fxRateCache';
 
 type EditedCurrency = 'USD' | 'MXN';
-
-const FX_API_URL = 'https://fxapi.app/api/usd/mxn.json';
-const FX_REFRESH_INTERVAL_MS = 5 * 60 * 1000 + 1000;
-const FX_RETRY_INTERVAL_MS = 60 * 1000;
 
 const rateFormatter = new Intl.NumberFormat('es-MX', {
   minimumFractionDigits: 2,
@@ -41,8 +31,8 @@ function formatAmount(value: number) {
 }
 
 export function InvestmentsFxPanel() {
-  const [rate, setRate] = useState<number | null>(null);
-  const [timestamp, setTimestamp] = useState<string | null>(null);
+  const [rate, setRate] = useState<number | null>(() => readUsdMxnRateCache()?.rate ?? null);
+  const [timestamp, setTimestamp] = useState<string | null>(() => readUsdMxnRateCache()?.timestamp ?? null);
   const [usdValue, setUsdValue] = useState('');
   const [mxnValue, setMxnValue] = useState('');
   const [lastEdited, setLastEdited] = useState<EditedCurrency>('USD');
@@ -76,86 +66,89 @@ export function InvestmentsFxPanel() {
     setUsdValue(formatAmount(parsedValue / nextRate));
   }, []);
 
-  const scheduleNextRefresh = useCallback((nextTimestamp: string) => {
+  const applyRateEntry = useCallback((entry: UsdMxnRateCacheEntry) => {
+    setRate(entry.rate);
+    setTimestamp(entry.timestamp);
+    setError(null);
+
+    const currentValues = valuesRef.current;
+    const sourceValue = currentValues.lastEdited === 'USD' ? currentValues.usdValue : currentValues.mxnValue;
+
+    if (sourceValue) {
+      syncValuesFromSource(currentValues.lastEdited, sourceValue, entry.rate);
+    }
+  }, [syncValuesFromSource]);
+
+  const scheduleNextRefresh = useCallback((entry: UsdMxnRateCacheEntry, callback: () => void) => {
     if (timeoutRef.current != null) {
       window.clearTimeout(timeoutRef.current);
     }
 
-    const nextRefreshAt = Date.parse(nextTimestamp) + FX_REFRESH_INTERVAL_MS;
-    const delay = Number.isFinite(nextRefreshAt) ? Math.max(0, nextRefreshAt - Date.now()) : FX_REFRESH_INTERVAL_MS;
+    const delay = getUsdMxnRateRefreshDelay(entry);
 
     timeoutRef.current = window.setTimeout(() => {
-      void loadRate();
+      callback();
     }, delay);
   }, []);
-
-  const loadRate = useCallback(async () => {
-    abortControllerRef.current?.abort();
-
-    const abortController = new AbortController();
-    abortControllerRef.current = abortController;
-
-    try {
-      const response = await fetch(FX_API_URL, {
-        cache: 'no-store',
-        signal: abortController.signal,
-      });
-
-      if (!response.ok) {
-        throw new Error(`FX API ${response.status}`);
-      }
-
-      const payload = (await response.json()) as FxApiResponse;
-
-      if (!Number.isFinite(payload.rate) || Number.isNaN(Date.parse(payload.timestamp))) {
-        throw new Error('FX API invalid payload');
-      }
-
-      setRate(payload.rate);
-      setTimestamp(payload.timestamp);
-      setError(null);
-
-      const currentValues = valuesRef.current;
-      const sourceValue = currentValues.lastEdited === 'USD' ? currentValues.usdValue : currentValues.mxnValue;
-
-      if (sourceValue) {
-        syncValuesFromSource(currentValues.lastEdited, sourceValue, payload.rate);
-      }
-
-      scheduleNextRefresh(payload.timestamp);
-    } catch (loadError) {
-      if (abortController.signal.aborted) {
-        return;
-      }
-
-      console.error(loadError);
-      setError('Sin señal');
-
-      if (timeoutRef.current != null) {
-        window.clearTimeout(timeoutRef.current);
-      }
-
-      timeoutRef.current = window.setTimeout(() => {
-        void loadRate();
-      }, FX_RETRY_INTERVAL_MS);
-    }
-  }, [scheduleNextRefresh, syncValuesFromSource]);
 
   useEffect(() => {
     valuesRef.current = { usdValue, mxnValue, lastEdited };
   }, [usdValue, mxnValue, lastEdited]);
 
   useEffect(() => {
-    void loadRate();
+    let isUnmounted = false;
+
+    const loadRate = async (force: boolean) => {
+      abortControllerRef.current?.abort();
+
+      const abortController = new AbortController();
+      abortControllerRef.current = abortController;
+
+      try {
+        const entry = await loadUsdMxnRate({ force, signal: abortController.signal });
+
+        if (abortController.signal.aborted || isUnmounted) {
+          return;
+        }
+
+        applyRateEntry(entry);
+        scheduleNextRefresh(entry, () => {
+          void loadRate(true);
+        });
+      } catch (loadError) {
+        if (abortController.signal.aborted || isUnmounted) {
+          return;
+        }
+
+        console.error(loadError);
+        setError('Sin señal');
+
+        if (timeoutRef.current != null) {
+          window.clearTimeout(timeoutRef.current);
+        }
+
+        timeoutRef.current = window.setTimeout(() => {
+          void loadRate(true);
+        }, USD_MXN_RETRY_INTERVAL_MS);
+      }
+    };
+
+    const cachedEntry = readUsdMxnRateCache();
+    if (cachedEntry) {
+      applyRateEntry(cachedEntry);
+    }
+
+    void loadRate(false);
 
     return () => {
+      isUnmounted = true;
       abortControllerRef.current?.abort();
 
       if (timeoutRef.current != null) {
         window.clearTimeout(timeoutRef.current);
       }
     };
-  }, [loadRate]);
+  }, [applyRateEntry, scheduleNextRefresh]);
 
   const handleUsdChange = useCallback(
     (event: React.ChangeEvent<HTMLInputElement>) => {
