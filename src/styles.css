@@ -3059,8 +3059,13 @@ textarea {
   display: grid;
   place-items: center;
   width: min(100%, 1200px);
+  /* fallback for older browsers first, then prefer dynamic viewport units when available */
   max-height: calc(100vh - 40px);
+  max-height: calc(100dvh - 40px);
   padding: 20px;
+  /* include safe-area insets on supporting browsers */
+  padding-top: calc(20px + env(safe-area-inset-top));
+  padding-bottom: calc(20px + env(safe-area-inset-bottom));
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.35);
@@ -3113,8 +3118,13 @@ textarea {
 
   .image-viewer__content {
     width: 100%;
-    max-height: 100vh;
+    /* prefer dynamic viewport on supporting browsers */
+    max-height: calc(100vh - 32px);
+    max-height: calc(100dvh - 32px);
     padding: 12px 12px 20px;
+    /* safe-area insets so the sheet top isn't hidden under browser UI */
+    padding-top: calc(12px + env(safe-area-inset-top));
+    padding-bottom: calc(20px + env(safe-area-inset-bottom));
     border-radius: 12px 12px 0 0;
     box-shadow: 0 -18px 60px rgba(15, 23, 42, 0.28);
     overflow: auto;
