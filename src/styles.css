@@ -3103,6 +3103,47 @@ textarea {
   align-self: start;
 }
 
+@media (max-width: 720px) {
+  /* show as a bottom sheet on small screens */
+  .image-viewer {
+    padding: 0;
+    place-items: end;
+    align-items: end;
+  }
+
+  .image-viewer__content {
+    width: 100%;
+    max-height: 100vh;
+    padding: 12px 12px 20px;
+    border-radius: 12px 12px 0 0;
+    box-shadow: 0 -18px 60px rgba(15, 23, 42, 0.28);
+    overflow: auto;
+    -webkit-overflow-scrolling: touch;
+    align-self: end;
+    place-items: start;
+  }
+
+  .image-viewer__content .linear-expense-form {
+    width: 100%;
+  }
+
+  /* keep footer visible while scrolling */
+  .image-viewer__content .expense-entry-editor__footer {
+    position: sticky;
+    bottom: 0;
+    margin-top: 12px;
+    background: linear-gradient(transparent, rgba(255,255,255,0.96));
+    padding-top: 8px;
+    padding-bottom: 8px;
+    z-index: 4;
+  }
+
+  .image-viewer__close {
+    top: 10px;
+    right: 12px;
+  }
+}
+
 .image-viewer__content .linear-expense-form .catalog-field span {
   white-space: normal;
 }
