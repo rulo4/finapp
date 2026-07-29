@@ -3064,6 +3064,8 @@ textarea {
   border-radius: 18px;
   background: rgba(255, 255, 255, 0.96);
   box-shadow: 0 24px 80px rgba(15, 23, 42, 0.35);
+  overflow: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .image-viewer__close {
@@ -3086,6 +3088,37 @@ textarea {
 .image-viewer__close:hover {
   background: #f8fafc;
 }
+
+/* Linear form layout when expense editor is shown in a modal */
+.image-viewer__content .linear-expense-form {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+  align-items: start;
+  width: min(100%, 720px);
+}
+
+/* align expense editor to top so long content scrolls from the top */
+.image-viewer__content .expense-entry-editor {
+  align-self: start;
+}
+
+.image-viewer__content .linear-expense-form .catalog-field span {
+  white-space: normal;
+}
+
+.image-viewer__content .linear-expense-form .expense-entry-editor__subtotal-row {
+  grid-template-columns: 1fr 36px;
+}
+
+.image-viewer__content .linear-expense-form .expense-entry-editor__footer {
+  justify-content: flex-end;
+}
+
+.image-viewer__content .linear-expense-form .expense-entry-editor__actions {
+  justify-content: flex-end;
+}
+
 
 .image-viewer__image {
   display: block;
