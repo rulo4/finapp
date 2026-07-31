@@ -3134,7 +3134,8 @@ textarea {
 /* Linear form layout when expense editor is shown in a modal */
 .image-viewer__content .linear-expense-form {
   display: grid;
-  grid-template-columns: 1fr;
+  /* Use the same 12-column layout as the inline editor so fields fill rows evenly on desktop */
+  grid-template-columns: repeat(12, minmax(0, 1fr));
   gap: 12px;
   align-items: start;
   width: min(100%, 720px);
@@ -3172,6 +3173,8 @@ textarea {
 
   .image-viewer__content .linear-expense-form {
     width: 100%;
+    /* collapse to a single column on small screens */
+    grid-template-columns: 1fr;
   }
 
   /* keep footer visible while scrolling */
