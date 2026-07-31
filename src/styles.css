@@ -2239,9 +2239,8 @@ textarea {
   min-width: 0;
 }
 
-.expense-entry-editor__field-control > input,
-.expense-entry-editor__field-control .app-select__control,
-.expense-entry-editor__field-control .app-date-picker__input {
+/* Make the non-mic child expand to fill available space so the mic stays a fixed-size icon at left */
+.expense-entry-editor__field-control > :not(.expense-entry-editor__mic-button) {
   flex: 1 1 0;
   min-width: 0;
 }
@@ -2317,6 +2316,16 @@ textarea {
   align-items: center;
 }
 
+.expense-entry-editor__subtotal-row > input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.expense-entry-editor__subtotal-row > .expense-entry-editor__calculator-toggle,
+.expense-entry-editor__subtotal-row > .expense-entry-editor__mic-button {
+  flex: 0 0 auto;
+}
+
 .expense-entry-editor__calculator-toggle {
   inline-size: 36px;
   block-size: 36px;
@@ -2345,7 +2354,7 @@ textarea {
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  margin-left: 6px;
+  margin-right: 6px;
 }
 
 .expense-entry-editor__mic-button--listening {
