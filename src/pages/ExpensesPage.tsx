@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faPlus, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faPlus, faReceipt, faRotateLeft, faTrash, faMicrophone, faMicrophoneSlash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
 import Modal from '../components/Modal';
@@ -11,6 +11,8 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../features/shared/gridEditors';
+import { useSpeechRecognition } from '../features/shared/useSpeech';
+import { parseSpokenDate, parseQuantityAndUnit, parseSubtotal, fuzzyMatchOption } from '../features/shared/spokenParsers';
 import {
   getTodayIsoDate,
   isIsoDateString,
@@ -961,6 +963,129 @@ export function ExpensesPage() {
   );
   const storeLabelById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const unitLabelById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
+  // Speech recognition for per-field voice input
+  const speech = useSpeechRecognition();
+  const [listeningField, setListeningField] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (speech.lastError) {
+      setFeedback(String(speech.lastError));
+    }
+  }, [speech.lastError]);
+
+  function capitalizeFirstLetter(text: string) {
+    return text && text.length ? text[0].toUpperCase() + text.slice(1) : text;
+  }
+
+  function handleStartStopListening(field: string) {
+    if (!speech.isSupported) {
+      setFeedback('Reconocimiento de voz no soportado en este navegador.');
+      return;
+    }
+
+    if (listeningField === field) {
+      speech.stopListening();
+      setListeningField(null);
+      return;
+    }
+
+    setListeningField(field);
+
+    speech.startListening(async (transcript: string) => {
+      setListeningField(null);
+
+      if (!activeExpenseRow) {
+        setFeedback('No hay fila activa.');
+        return;
+      }
+
+      const t = transcript.trim();
+      if (!t) {
+        setFeedback('No se recibió texto del micrófono.');
+        return;
+      }
+
+      console.debug(`[speech] field ${field} transcript:`, t);
+      setFeedback(`Escuchado: "${t}"`);
+
+      try {
+        switch (field) {
+          case 'date': {
+            const parsed = parseSpokenDate(t);
+            if (parsed) {
+              updateExpenseRow(activeExpenseRow.id, { entryDate: parsed });
+              setFeedback(`Fecha aplicada: ${parsed}`);
+            } else {
+              setFeedback(`No se pudo interpretar la fecha: "${t}"`);
+            }
+            break;
+          }
+          case 'concept': {
+            const cleaned = t.replace(/[.?!]+$/g, '').trim();
+            updateExpenseRow(activeExpenseRow.id, { concept: capitalizeFirstLetter(cleaned) });
+            setFeedback(`Concepto aplicado: ${capitalizeFirstLetter(cleaned)}`);
+            break;
+          }
+          case 'qtyunit': {
+            const parsed = parseQuantityAndUnit(t, unitsOfMeasure);
+            if (parsed) {
+              updateExpenseRow(activeExpenseRow.id, { quantity: parsed.quantity, unitOfMeasureId: parsed.unitId || '' });
+              const unitLabel = parsed.unitId ? unitLabelById.get(parsed.unitId) ?? '' : '';
+              setFeedback(`Cantidad aplicada: ${parsed.quantity}${unitLabel ? ' ' + unitLabel : ''}`);
+            } else {
+              setFeedback(`No se pudo interpretar cantidad/unidad: "${t}"`);
+            }
+            break;
+          }
+          case 'subtotal': {
+            const parsed = parseSubtotal(t);
+            if (parsed != null) {
+              updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: parsed });
+              setFeedback(`Subtotal aplicado: ${parsed}`);
+            } else {
+              setFeedback(`No se pudo interpretar el subtotal: "${t}"`);
+            }
+            break;
+          }
+          case 'category': {
+            const matched = fuzzyMatchOption(t, categoryOptions);
+            if (matched) {
+              updateExpenseRow(activeExpenseRow.id, { categoryId: matched.value });
+              setFeedback(`Categoría aplicada: ${matched.label}`);
+            } else {
+              setFeedback(`No se encontró categoría: "${t}"`);
+            }
+            break;
+          }
+          case 'payment': {
+            const matched = fuzzyMatchOption(t, paymentInstrumentOptions);
+            if (matched) {
+              updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: matched.value });
+              setFeedback(`Instrumento aplicado: ${matched.label}`);
+            } else {
+              setFeedback(`No se encontró instrumento de pago: "${t}"`);
+            }
+            break;
+          }
+          case 'store': {
+            const matched = fuzzyMatchOption(t, storeOptions);
+            if (matched) updateExpenseRow(activeExpenseRow.id, { storeId: matched.value });
+            else setFeedback(`No se encontró tienda: "${t}"`);
+            break;
+          }
+          case 'notes': {
+            updateExpenseRow(activeExpenseRow.id, { notes: t });
+            setFeedback('Notas aplicadas');
+            break;
+          }
+          default:
+            break;
+        }
+      } catch (err) {
+        setFeedback(err instanceof Error ? err.message : String(err));
+      }
+    }, 'es-MX');
+  }
   const visibleRows = useMemo(() => {
     const entryDateFilter = tableFilters.entryDate.trim();
     const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
@@ -1331,7 +1456,7 @@ export function ExpensesPage() {
         </div>
 
 
-        {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
+        {!isExpenseModalOpen && feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
         
@@ -1345,54 +1470,85 @@ export function ExpensesPage() {
                 </div>
               </div>
 
+                {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
+
               <div className="finance-form expense-entry-editor__form linear-expense-form">
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--date">
                   <span>Fecha</span>
-                  <AppDatePicker
-                    value={activeExpenseRow.entryDate}
-                    ariaLabel="Fecha del egreso"
-                    disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
-                    onChange={(value) => {
-                      updateExpenseRow(activeExpenseRow.id, { entryDate: value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <AppDatePicker
+                      value={activeExpenseRow.entryDate}
+                      ariaLabel="Fecha del egreso"
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { entryDate: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'date' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Fecha por voz"
+                      title="Decir fecha"
+                      onClick={() => handleStartStopListening('date')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'date' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--concept">
                   <span>Concepto</span>
-                  <input
-                    type="text"
-                    value={activeExpenseRow.concept}
-                    placeholder="Supermercado, renta, gasolina"
-                    onChange={(event) => {
-                      updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <input
+                      type="text"
+                      value={activeExpenseRow.concept}
+                      placeholder="Supermercado, renta, gasolina"
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'concept' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Concepto por voz"
+                      title="Decir concepto"
+                      onClick={() => handleStartStopListening('concept')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'concept' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
-                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity">
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity-unit">
                   <span>Cantidad</span>
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={activeExpenseRow.quantity}
-                    onChange={(event) => {
-                      updateExpenseRow(activeExpenseRow.id, { quantity: event.target.value });
-                    }}
-                  />
-                </label>
-
-                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--unit">
-                  <span>Unidad</span>
-                  <AppSelect
-                    ariaLabel="Unidad de medida del egreso"
-                    options={unitOptions}
-                    value={activeExpenseRow.unitOfMeasureId}
-                    onChange={(value) => {
-                      updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={activeExpenseRow.quantity}
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { quantity: event.target.value });
+                      }}
+                    />
+                    <AppSelect
+                      ariaLabel="Unidad de medida del egreso"
+                      options={unitOptions}
+                      value={activeExpenseRow.unitOfMeasureId}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'qtyunit' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Cantidad y unidad por voz"
+                      title="Decir cantidad y unidad"
+                      onClick={() => handleStartStopListening('qtyunit')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'qtyunit' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--subtotal">
@@ -1417,6 +1573,15 @@ export function ExpensesPage() {
                       }}
                     >
                       <FontAwesomeIcon icon={faCalculator} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'subtotal' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Subtotal por voz"
+                      title="Decir subtotal"
+                      onClick={() => handleStartStopListening('subtotal')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'subtotal' ? faMicrophoneSlash : faMicrophone} />
                     </button>
                   </div>
                   {isSubtotalCalculatorOpen ? (
@@ -1456,40 +1621,75 @@ export function ExpensesPage() {
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--category">
                   <span>Categoría</span>
-                  <AppSelect
-                    ariaLabel="Categoría del egreso"
-                    options={categoryOptions}
-                    value={activeExpenseRow.categoryId}
-                    onChange={(value) => {
-                      updateExpenseRow(activeExpenseRow.id, { categoryId: value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Categoría del egreso"
+                      options={categoryOptions}
+                      value={activeExpenseRow.categoryId}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { categoryId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'category' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Categoría por voz"
+                      title="Decir categoría"
+                      onClick={() => handleStartStopListening('category')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'category' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--payment">
                   <span>Pago con</span>
-                  <AppSelect
-                    ariaLabel="Instrumento de pago del egreso"
-                    options={paymentInstrumentOptions}
-                    value={activeExpenseRow.paymentInstrumentId}
-                    isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
-                    onChange={(value) => {
-                      updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Instrumento de pago del egreso"
+                      options={paymentInstrumentOptions}
+                      value={activeExpenseRow.paymentInstrumentId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'payment' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Instrumento de pago por voz"
+                      title="Decir instrumento de pago"
+                      onClick={() => handleStartStopListening('payment')}
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'payment' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--store">
                   <span>Tienda</span>
-                  <AppSelect
-                    ariaLabel="Tienda del egreso"
-                    options={storeOptions}
-                    value={activeExpenseRow.storeId}
-                    isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
-                    onChange={(value) => {
-                      updateExpenseRow(activeExpenseRow.id, { storeId: value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Tienda del egreso"
+                      options={storeOptions}
+                      value={activeExpenseRow.storeId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { storeId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'store' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Tienda por voz"
+                      title="Decir tienda"
+                      onClick={() => handleStartStopListening('store')}
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'store' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--currency">
@@ -1525,14 +1725,25 @@ export function ExpensesPage() {
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--notes">
                   <span>Notas</span>
-                  <input
-                    type="text"
-                    value={activeExpenseRow.notes}
-                    placeholder="Opcional"
-                    onChange={(event) => {
-                      updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
-                    }}
-                  />
+                  <div className="expense-entry-editor__field-control">
+                    <input
+                      type="text"
+                      value={activeExpenseRow.notes}
+                      placeholder="Opcional"
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'notes' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Notas por voz"
+                      title="Decir notas"
+                      onClick={() => handleStartStopListening('notes')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'notes' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
                 </label>
               </div>
 

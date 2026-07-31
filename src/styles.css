@@ -2232,6 +2232,20 @@ textarea {
   max-inline-size: none;
 }
 
+.expense-entry-editor__field-control {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.expense-entry-editor__field-control > input,
+.expense-entry-editor__field-control .app-select__control,
+.expense-entry-editor__field-control .app-date-picker__input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .expense-entry-editor__field--date {
   --expense-field-ch: 10;
   grid-column: span 2;
@@ -2250,6 +2264,11 @@ textarea {
 .expense-entry-editor__field--unit {
   --expense-field-ch: 5;
   grid-column: span 1;
+}
+
+.expense-entry-editor__field--quantity-unit {
+  --expense-field-ch: 8;
+  grid-column: span 2;
 }
 
 .expense-entry-editor__field--subtotal {
@@ -2293,8 +2312,7 @@ textarea {
 }
 
 .expense-entry-editor__subtotal-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 36px;
+  display: flex;
   gap: 8px;
   align-items: center;
 }
@@ -2315,6 +2333,25 @@ textarea {
   border-color: #bfdbfe;
   background: #eff6ff;
   color: #1d4ed8;
+}
+
+.expense-entry-editor__mic-button {
+  inline-size: 36px;
+  block-size: 36px;
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: #fff;
+  color: #475569;
+  display: inline-grid;
+  place-items: center;
+  cursor: pointer;
+  margin-left: 6px;
+}
+
+.expense-entry-editor__mic-button--listening {
+  border-color: #fecaca;
+  background: #fff1f2;
+  color: #b91c1c;
 }
 
 .expense-entry-editor__calculator {
