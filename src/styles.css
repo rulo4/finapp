@@ -2239,7 +2239,7 @@ textarea {
   min-width: 0;
 }
 
-/* Make the non-mic child expand to fill available space so the mic stays a fixed-size icon at left */
+/* Make the non-mic child expand to fill available space so the mic stays a fixed-size icon at right */
 .expense-entry-editor__field-control > :not(.expense-entry-editor__mic-button) {
   flex: 1 1 0;
   min-width: 0;
@@ -2354,7 +2354,7 @@ textarea {
   display: inline-grid;
   place-items: center;
   cursor: pointer;
-  margin-right: 6px;
+  margin-left: 6px;
 }
 
 .expense-entry-editor__mic-button--listening {

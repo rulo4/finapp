@@ -1476,6 +1476,14 @@ export function ExpensesPage() {
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--date">
                   <span>Fecha</span>
                   <div className="expense-entry-editor__field-control">
+                    <AppDatePicker
+                      value={activeExpenseRow.entryDate}
+                      ariaLabel="Fecha del egreso"
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { entryDate: value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'date' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1485,20 +1493,20 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'date' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <AppDatePicker
-                      value={activeExpenseRow.entryDate}
-                      ariaLabel="Fecha del egreso"
-                      disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
-                      onChange={(value) => {
-                        updateExpenseRow(activeExpenseRow.id, { entryDate: value });
-                      }}
-                    />
                   </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--concept">
                   <span>Concepto</span>
                   <div className="expense-entry-editor__field-control">
+                    <input
+                      type="text"
+                      value={activeExpenseRow.concept}
+                      placeholder="Supermercado, renta, gasolina"
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'concept' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1508,29 +1516,12 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'concept' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <input
-                      type="text"
-                      value={activeExpenseRow.concept}
-                      placeholder="Supermercado, renta, gasolina"
-                      onChange={(event) => {
-                        updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
-                      }}
-                    />
                   </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity-unit">
                   <span>Cantidad</span>
                   <div className="expense-entry-editor__field-control">
-                    <button
-                      type="button"
-                      className={`expense-entry-editor__mic-button${listeningField === 'qtyunit' ? ' expense-entry-editor__mic-button--listening' : ''}`}
-                      aria-label="Cantidad y unidad por voz"
-                      title="Decir cantidad y unidad"
-                      onClick={() => handleStartStopListening('qtyunit')}
-                    >
-                      <FontAwesomeIcon icon={listeningField === 'qtyunit' ? faMicrophoneSlash : faMicrophone} />
-                    </button>
                     <input
                       type="number"
                       min="0"
@@ -1548,21 +1539,21 @@ export function ExpensesPage() {
                         updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
                       }}
                     />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'qtyunit' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Cantidad y unidad por voz"
+                      title="Decir cantidad y unidad"
+                      onClick={() => handleStartStopListening('qtyunit')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'qtyunit' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
                   </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--subtotal">
                   <span>Subtotal</span>
                   <div className="expense-entry-editor__subtotal-row">
-                    <button
-                      type="button"
-                      className={`expense-entry-editor__mic-button${listeningField === 'subtotal' ? ' expense-entry-editor__mic-button--listening' : ''}`}
-                      aria-label="Subtotal por voz"
-                      title="Decir subtotal"
-                      onClick={() => handleStartStopListening('subtotal')}
-                    >
-                      <FontAwesomeIcon icon={listeningField === 'subtotal' ? faMicrophoneSlash : faMicrophone} />
-                    </button>
                     <input
                       type="number"
                       min="0"
@@ -1582,6 +1573,15 @@ export function ExpensesPage() {
                       }}
                     >
                       <FontAwesomeIcon icon={faCalculator} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'subtotal' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Subtotal por voz"
+                      title="Decir subtotal"
+                      onClick={() => handleStartStopListening('subtotal')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'subtotal' ? faMicrophoneSlash : faMicrophone} />
                     </button>
                   </div>
                   {isSubtotalCalculatorOpen ? (
@@ -1622,6 +1622,14 @@ export function ExpensesPage() {
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--category">
                   <span>Categoría</span>
                   <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Categoría del egreso"
+                      options={categoryOptions}
+                      value={activeExpenseRow.categoryId}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { categoryId: value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'category' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1631,20 +1639,21 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'category' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <AppSelect
-                      ariaLabel="Categoría del egreso"
-                      options={categoryOptions}
-                      value={activeExpenseRow.categoryId}
-                      onChange={(value) => {
-                        updateExpenseRow(activeExpenseRow.id, { categoryId: value });
-                      }}
-                    />
                   </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--payment">
                   <span>Pago con</span>
                   <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Instrumento de pago del egreso"
+                      options={paymentInstrumentOptions}
+                      value={activeExpenseRow.paymentInstrumentId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'payment' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1655,21 +1664,21 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'payment' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <AppSelect
-                      ariaLabel="Instrumento de pago del egreso"
-                      options={paymentInstrumentOptions}
-                      value={activeExpenseRow.paymentInstrumentId}
-                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
-                      onChange={(value) => {
-                        updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
-                      }}
-                    />
                   </div>
                 </label>
 
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--store">
                   <span>Tienda</span>
                   <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Tienda del egreso"
+                      options={storeOptions}
+                      value={activeExpenseRow.storeId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { storeId: value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'store' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1680,15 +1689,6 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'store' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <AppSelect
-                      ariaLabel="Tienda del egreso"
-                      options={storeOptions}
-                      value={activeExpenseRow.storeId}
-                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
-                      onChange={(value) => {
-                        updateExpenseRow(activeExpenseRow.id, { storeId: value });
-                      }}
-                    />
                   </div>
                 </label>
 
@@ -1726,6 +1726,14 @@ export function ExpensesPage() {
                 <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--notes">
                   <span>Notas</span>
                   <div className="expense-entry-editor__field-control">
+                    <input
+                      type="text"
+                      value={activeExpenseRow.notes}
+                      placeholder="Opcional"
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
+                      }}
+                    />
                     <button
                       type="button"
                       className={`expense-entry-editor__mic-button${listeningField === 'notes' ? ' expense-entry-editor__mic-button--listening' : ''}`}
@@ -1735,14 +1743,6 @@ export function ExpensesPage() {
                     >
                       <FontAwesomeIcon icon={listeningField === 'notes' ? faMicrophoneSlash : faMicrophone} />
                     </button>
-                    <input
-                      type="text"
-                      value={activeExpenseRow.notes}
-                      placeholder="Opcional"
-                      onChange={(event) => {
-                        updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
-                      }}
-                    />
                   </div>
                 </label>
               </div>
