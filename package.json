@@ -35,7 +35,8 @@
     "react-dom": "^19.0.0",
     "react-router-dom": "^7.3.0",
     "react-select": "^5.10.2",
-    "recharts": "^3.8.1"
+    "recharts": "^3.8.1",
+    "fuse.js": "^6.6.2"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.18.2",

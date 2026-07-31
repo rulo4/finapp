@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome';
-import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faPlus, faReceipt, faRotateLeft, faTrash } from '@fortawesome/free-solid-svg-icons';
+import { faCalculator, faCopy, faEraser, faFilterCircleXmark, faFloppyDisk, faPlus, faReceipt, faRotateLeft, faTrash, faMicrophone, faMicrophoneSlash } from '@fortawesome/free-solid-svg-icons';
 import { DataGrid, type Column, type DataGridHandle, type RenderHeaderCellProps } from 'react-data-grid';
 import { Link } from 'react-router-dom';
+import Modal from '../components/Modal';
 import { AppDatePicker } from '../features/shared/AppDatePicker';
 import {
   AppSelect,
@@ -10,12 +11,13 @@ import {
   autoSwitchCurrencyFromFx,
   type SelectOption,
 } from '../features/shared/gridEditors';
+import { useSpeechRecognition } from '../features/shared/useSpeech';
+import { parseSpokenDate, parseQuantityAndUnit, parseSubtotal, fuzzyMatchOption } from '../features/shared/spokenParsers';
 import {
   getTodayIsoDate,
   isIsoDateString,
 } from '../features/shared/isoDate';
 import { createCurrentPeriodSelection, getPeriodDateRange, type PeriodFilterSelection, PeriodFilter } from '../features/shared/PeriodFilter';
-import { useMediaQuery } from '../features/shared/useMediaQuery';
 import { isSupabaseConfigured, supabase } from '../lib/supabase/client';
 
 type ExpenseCategory = {
@@ -542,11 +544,11 @@ export function ExpensesPage() {
   const [calculatorExpression, setCalculatorExpression] = useState('');
   const [isSubtotalCalculatorOpen, setIsSubtotalCalculatorOpen] = useState(false);
   const [activeExpenseId, setActiveExpenseId] = useState<string | null>(null);
-  const [mobilePrimaryPanel, setMobilePrimaryPanel] = useState<'capture' | 'history'>('capture');
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const rowsRef = useRef<ExpenseGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, ExpenseGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
-  const isNarrowViewport = useMediaQuery('(max-width: 720px)');
+  
 
   useEffect(() => {
     rowsRef.current = rows;
@@ -961,6 +963,129 @@ export function ExpensesPage() {
   );
   const storeLabelById = useMemo(() => new Map(stores.map((store) => [store.id, store.name])), [stores]);
   const unitLabelById = useMemo(() => new Map(unitsOfMeasure.map((unit) => [unit.id, unit.name])), [unitsOfMeasure]);
+  // Speech recognition for per-field voice input
+  const speech = useSpeechRecognition();
+  const [listeningField, setListeningField] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (speech.lastError) {
+      setFeedback(String(speech.lastError));
+    }
+  }, [speech.lastError]);
+
+  function capitalizeFirstLetter(text: string) {
+    return text && text.length ? text[0].toUpperCase() + text.slice(1) : text;
+  }
+
+  function handleStartStopListening(field: string) {
+    if (!speech.isSupported) {
+      setFeedback('Reconocimiento de voz no soportado en este navegador.');
+      return;
+    }
+
+    if (listeningField === field) {
+      speech.stopListening();
+      setListeningField(null);
+      return;
+    }
+
+    setListeningField(field);
+
+    speech.startListening(async (transcript: string) => {
+      setListeningField(null);
+
+      if (!activeExpenseRow) {
+        setFeedback('No hay fila activa.');
+        return;
+      }
+
+      const t = transcript.trim();
+      if (!t) {
+        setFeedback('No se recibió texto del micrófono.');
+        return;
+      }
+
+      console.debug(`[speech] field ${field} transcript:`, t);
+      setFeedback(`Escuchado: "${t}"`);
+
+      try {
+        switch (field) {
+          case 'date': {
+            const parsed = parseSpokenDate(t);
+            if (parsed) {
+              updateExpenseRow(activeExpenseRow.id, { entryDate: parsed });
+              setFeedback(`Fecha aplicada: ${parsed}`);
+            } else {
+              setFeedback(`No se pudo interpretar la fecha: "${t}"`);
+            }
+            break;
+          }
+          case 'concept': {
+            const cleaned = t.replace(/[.?!]+$/g, '').trim();
+            updateExpenseRow(activeExpenseRow.id, { concept: capitalizeFirstLetter(cleaned) });
+            setFeedback(`Concepto aplicado: ${capitalizeFirstLetter(cleaned)}`);
+            break;
+          }
+          case 'qtyunit': {
+            const parsed = parseQuantityAndUnit(t, unitsOfMeasure);
+            if (parsed) {
+              updateExpenseRow(activeExpenseRow.id, { quantity: parsed.quantity, unitOfMeasureId: parsed.unitId || '' });
+              const unitLabel = parsed.unitId ? unitLabelById.get(parsed.unitId) ?? '' : '';
+              setFeedback(`Cantidad aplicada: ${parsed.quantity}${unitLabel ? ' ' + unitLabel : ''}`);
+            } else {
+              setFeedback(`No se pudo interpretar cantidad/unidad: "${t}"`);
+            }
+            break;
+          }
+          case 'subtotal': {
+            const parsed = parseSubtotal(t);
+            if (parsed != null) {
+              updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: parsed });
+              setFeedback(`Subtotal aplicado: ${parsed}`);
+            } else {
+              setFeedback(`No se pudo interpretar el subtotal: "${t}"`);
+            }
+            break;
+          }
+          case 'category': {
+            const matched = fuzzyMatchOption(t, categoryOptions);
+            if (matched) {
+              updateExpenseRow(activeExpenseRow.id, { categoryId: matched.value });
+              setFeedback(`Categoría aplicada: ${matched.label}`);
+            } else {
+              setFeedback(`No se encontró categoría: "${t}"`);
+            }
+            break;
+          }
+          case 'payment': {
+            const matched = fuzzyMatchOption(t, paymentInstrumentOptions);
+            if (matched) {
+              updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: matched.value });
+              setFeedback(`Instrumento aplicado: ${matched.label}`);
+            } else {
+              setFeedback(`No se encontró instrumento de pago: "${t}"`);
+            }
+            break;
+          }
+          case 'store': {
+            const matched = fuzzyMatchOption(t, storeOptions);
+            if (matched) updateExpenseRow(activeExpenseRow.id, { storeId: matched.value });
+            else setFeedback(`No se encontró tienda: "${t}"`);
+            break;
+          }
+          case 'notes': {
+            updateExpenseRow(activeExpenseRow.id, { notes: t });
+            setFeedback('Notas aplicadas');
+            break;
+          }
+          default:
+            break;
+        }
+      } catch (err) {
+        setFeedback(err instanceof Error ? err.message : String(err));
+      }
+    }, 'es-MX');
+  }
   const visibleRows = useMemo(() => {
     const entryDateFilter = tableFilters.entryDate.trim();
     const conceptFilter = tableFilters.concept.trim().toLocaleLowerCase();
@@ -1279,8 +1404,7 @@ export function ExpensesPage() {
       error: null as string | null,
     };
   }, [calculatorExpression]);
-  const showCapturePanel = !isNarrowViewport || mobilePrimaryPanel === 'capture';
-  const showHistoryPanel = !isNarrowViewport || mobilePrimaryPanel === 'history';
+  const showHistoryPanel = true;
 
   return (
     <div className="page">
@@ -1298,6 +1422,30 @@ export function ExpensesPage() {
             >
               <FontAwesomeIcon icon={faFilterCircleXmark} />
             </button>
+            <button
+              type="button"
+              className="grid-action income-toolbar__action"
+              aria-label="Nuevo egreso"
+              title="Nuevo egreso"
+              onClick={() => {
+                const existingDraft = rowsRef.current.find((r) => r.isDraft);
+
+                if (existingDraft) {
+                  setActiveExpenseId(existingDraft.id);
+                  setIsExpenseModalOpen(true);
+                  return;
+                }
+
+                const draft = createDraftExpenseRow();
+                const nextRows = [draft, ...rowsRef.current.filter((r) => !r.isDraft)];
+                rowsRef.current = nextRows;
+                setRows(nextRows);
+                setActiveExpenseId(draft.id);
+                setIsExpenseModalOpen(true);
+              }}
+            >
+              <FontAwesomeIcon icon={faPlus} />
+            </button>
           </div>
 
           <div className="badge-row" aria-label="Resumen de egresos visibles">
@@ -1308,319 +1456,387 @@ export function ExpensesPage() {
         </div>
 
 
-        {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
+        {!isExpenseModalOpen && feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
         {currentErrorMessage ? <div className="feedback-banner feedback-banner--error">{currentErrorMessage}</div> : null}
 
-        {isNarrowViewport ? (
-          <div className="expense-workspace-toggle" role="tablist" aria-label="Cambiar vista de egresos">
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mobilePrimaryPanel === 'capture'}
-              className={`expense-workspace-toggle__button${mobilePrimaryPanel === 'capture' ? ' expense-workspace-toggle__button--active' : ''}`}
-              onClick={() => setMobilePrimaryPanel('capture')}
-            >
-              Captura
-            </button>
-            <button
-              type="button"
-              role="tab"
-              aria-selected={mobilePrimaryPanel === 'history'}
-              className={`expense-workspace-toggle__button${mobilePrimaryPanel === 'history' ? ' expense-workspace-toggle__button--active' : ''}`}
-              onClick={() => setMobilePrimaryPanel('history')}
-            >
-              Historial
-            </button>
-          </div>
-        ) : null}
+        
 
-        {showCapturePanel && activeExpenseRow ? (
-          <section className="expense-entry-editor" aria-label="Editor de egreso activo">
-            <div className="expense-entry-editor__header">
-              <div className="expense-entry-editor__title">
-                <strong>{activeExpenseTitle}</strong>
+        {isExpenseModalOpen && activeExpenseRow ? (
+          <Modal ariaLabel={activeExpenseTitle} onClose={() => setIsExpenseModalOpen(false)}>
+            <section className="expense-entry-editor" aria-label="Editor de egreso activo">
+              <div className="expense-entry-editor__header">
+                <div className="expense-entry-editor__title">
+                  <strong>{activeExpenseTitle}</strong>
+                </div>
               </div>
-            </div>
 
-            <div className="finance-form expense-entry-editor__form">
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--date">
-                <span>Fecha</span>
-                <AppDatePicker
-                  value={activeExpenseRow.entryDate}
-                  ariaLabel="Fecha del egreso"
-                  disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { entryDate: value });
-                  }}
-                />
-              </label>
+                {feedback ? <div className={isErrorFeedback(feedback) ? 'feedback-banner feedback-banner--error' : 'feedback-banner'}>{feedback}</div> : null}
 
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--concept">
-                <span>Concepto</span>
-                <input
-                  type="text"
-                  value={activeExpenseRow.concept}
-                  placeholder="Supermercado, renta, gasolina"
-                  onChange={(event) => {
-                    updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
-                  }}
-                />
-              </label>
+              <div className="finance-form expense-entry-editor__form linear-expense-form">
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--date">
+                  <span>Fecha</span>
+                  <div className="expense-entry-editor__field-control">
+                    <AppDatePicker
+                      value={activeExpenseRow.entryDate}
+                      ariaLabel="Fecha del egreso"
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'entryDate')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { entryDate: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'date' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Fecha por voz"
+                      title="Decir fecha"
+                      onClick={() => handleStartStopListening('date')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'date' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
 
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity">
-                <span>Cantidad</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={activeExpenseRow.quantity}
-                  onChange={(event) => {
-                    updateExpenseRow(activeExpenseRow.id, { quantity: event.target.value });
-                  }}
-                />
-              </label>
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--concept">
+                  <span>Concepto</span>
+                  <div className="expense-entry-editor__field-control">
+                    <input
+                      type="text"
+                      value={activeExpenseRow.concept}
+                      placeholder="Supermercado, renta, gasolina"
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { concept: event.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'concept' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Concepto por voz"
+                      title="Decir concepto"
+                      onClick={() => handleStartStopListening('concept')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'concept' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
 
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--unit">
-                <span>Unidad</span>
-                <AppSelect
-                  ariaLabel="Unidad de medida del egreso"
-                  options={unitOptions}
-                  value={activeExpenseRow.unitOfMeasureId}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
-                  }}
-                />
-              </label>
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--quantity-unit">
+                  <span>Cantidad</span>
+                  <div className="expense-entry-editor__field-control">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={activeExpenseRow.quantity}
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { quantity: event.target.value });
+                      }}
+                    />
+                    <AppSelect
+                      ariaLabel="Unidad de medida del egreso"
+                      options={unitOptions}
+                      value={activeExpenseRow.unitOfMeasureId}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { unitOfMeasureId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'qtyunit' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Cantidad y unidad por voz"
+                      title="Decir cantidad y unidad"
+                      onClick={() => handleStartStopListening('qtyunit')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'qtyunit' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
 
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--subtotal">
-                <span>Subtotal</span>
-                <div className="expense-entry-editor__subtotal-row">
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--subtotal">
+                  <span>Subtotal</span>
+                  <div className="expense-entry-editor__subtotal-row">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={activeExpenseRow.subtotalOriginal}
+                      onChange={(event) => {
+                        updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: event.target.value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__calculator-toggle${isSubtotalCalculatorOpen ? ' expense-entry-editor__calculator-toggle--active' : ''}`}
+                      aria-label="Abrir calculadora de subtotal"
+                      title="Calculadora"
+                      onClick={() => {
+                        setIsSubtotalCalculatorOpen((currentValue) => !currentValue);
+                      }}
+                    >
+                      <FontAwesomeIcon icon={faCalculator} />
+                    </button>
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'subtotal' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Subtotal por voz"
+                      title="Decir subtotal"
+                      onClick={() => handleStartStopListening('subtotal')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'subtotal' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                  {isSubtotalCalculatorOpen ? (
+                    <div className="expense-entry-editor__calculator" aria-label="Calculadora de subtotal">
+                      <input
+                        type="text"
+                        className="expense-entry-editor__calculator-input"
+                        value={calculatorExpression}
+                        onChange={(event) => {
+                          setCalculatorExpression(event.target.value);
+                        }}
+                        placeholder="2+3*10"
+                        aria-label="Expresión aritmética"
+                        spellCheck={false}
+                      />
+                      <span className={`expense-entry-editor__calculator-result${calculatorResult.error ? ' expense-entry-editor__calculator-result--error' : ''}`}>
+                        {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
+                      </span>
+                      <button
+                        type="button"
+                        className="expense-entry-editor__calculator-apply"
+                        disabled={calculatorResult.numericValue == null}
+                        onClick={() => {
+                          if (calculatorResult.numericValue == null) {
+                            return;
+                          }
+
+                          updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: calculatorResult.displayValue });
+                          setIsSubtotalCalculatorOpen(false);
+                        }}
+                      >
+                        Usar
+                      </button>
+                    </div>
+                  ) : null}
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--category">
+                  <span>Categoría</span>
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Categoría del egreso"
+                      options={categoryOptions}
+                      value={activeExpenseRow.categoryId}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { categoryId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'category' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Categoría por voz"
+                      title="Decir categoría"
+                      onClick={() => handleStartStopListening('category')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'category' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--payment">
+                  <span>Pago con</span>
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Instrumento de pago del egreso"
+                      options={paymentInstrumentOptions}
+                      value={activeExpenseRow.paymentInstrumentId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'payment' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Instrumento de pago por voz"
+                      title="Decir instrumento de pago"
+                      onClick={() => handleStartStopListening('payment')}
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'payment' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--store">
+                  <span>Tienda</span>
+                  <div className="expense-entry-editor__field-control">
+                    <AppSelect
+                      ariaLabel="Tienda del egreso"
+                      options={storeOptions}
+                      value={activeExpenseRow.storeId}
+                      isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                      onChange={(value) => {
+                        updateExpenseRow(activeExpenseRow.id, { storeId: value });
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className={`expense-entry-editor__mic-button${listeningField === 'store' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Tienda por voz"
+                      title="Decir tienda"
+                      onClick={() => handleStartStopListening('store')}
+                      disabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
+                    >
+                      <FontAwesomeIcon icon={listeningField === 'store' ? faMicrophoneSlash : faMicrophone} />
+                    </button>
+                  </div>
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--currency">
+                  <span>Moneda</span>
+                  <AppSelect
+                    ariaLabel="Moneda del egreso"
+                    options={currencyOptions}
+                    value={activeExpenseRow.currencyCode}
+                    onChange={(value) => {
+                      updateExpenseRow(activeExpenseRow.id, { currencyCode: value as 'MXN' | 'USD' });
+                    }}
+                  />
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--fx">
+                  <span>FX</span>
                   <input
                     type="number"
                     min="0"
-                    step="0.01"
-                    value={activeExpenseRow.subtotalOriginal}
+                    step="0.000001"
+                    value={activeExpenseRow.currencyCode === 'MXN' ? '1' : activeExpenseRow.fxRateToMxn}
+                    disabled={activeExpenseRow.currencyCode === 'MXN'}
                     onChange={(event) => {
-                      updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: event.target.value });
+                      updateExpenseRow(activeExpenseRow.id, { fxRateToMxn: event.target.value });
                     }}
                   />
-                  <button
-                    type="button"
-                    className={`expense-entry-editor__calculator-toggle${isSubtotalCalculatorOpen ? ' expense-entry-editor__calculator-toggle--active' : ''}`}
-                    aria-label="Abrir calculadora de subtotal"
-                    title="Calculadora"
-                    onClick={() => {
-                      setIsSubtotalCalculatorOpen((currentValue) => !currentValue);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faCalculator} />
-                  </button>
-                </div>
-                {isSubtotalCalculatorOpen ? (
-                  <div className="expense-entry-editor__calculator" aria-label="Calculadora de subtotal">
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--total">
+                  <span>Total MXN</span>
+                  <input type="text" value={activeExpenseRow.totalAmountMxn} disabled readOnly />
+                </label>
+
+                <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--notes">
+                  <span>Notas</span>
+                  <div className="expense-entry-editor__field-control">
                     <input
                       type="text"
-                      className="expense-entry-editor__calculator-input"
-                      value={calculatorExpression}
+                      value={activeExpenseRow.notes}
+                      placeholder="Opcional"
                       onChange={(event) => {
-                        setCalculatorExpression(event.target.value);
+                        updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
                       }}
-                      placeholder="2+3*10"
-                      aria-label="Expresión aritmética"
-                      spellCheck={false}
                     />
-                    <span className={`expense-entry-editor__calculator-result${calculatorResult.error ? ' expense-entry-editor__calculator-result--error' : ''}`}>
-                      {calculatorResult.error ? calculatorResult.error : calculatorResult.displayValue || '='}
-                    </span>
                     <button
                       type="button"
-                      className="expense-entry-editor__calculator-apply"
-                      disabled={calculatorResult.numericValue == null}
-                      onClick={() => {
-                        if (calculatorResult.numericValue == null) {
-                          return;
-                        }
-
-                        updateExpenseRow(activeExpenseRow.id, { subtotalOriginal: calculatorResult.displayValue });
-                        setIsSubtotalCalculatorOpen(false);
-                      }}
+                      className={`expense-entry-editor__mic-button${listeningField === 'notes' ? ' expense-entry-editor__mic-button--listening' : ''}`}
+                      aria-label="Notas por voz"
+                      title="Decir notas"
+                      onClick={() => handleStartStopListening('notes')}
                     >
-                      Usar
+                      <FontAwesomeIcon icon={listeningField === 'notes' ? faMicrophoneSlash : faMicrophone} />
                     </button>
                   </div>
-                ) : null}
-              </label>
+                </label>
+              </div>
 
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--category">
-                <span>Categoría</span>
-                <AppSelect
-                  ariaLabel="Categoría del egreso"
-                  options={categoryOptions}
-                  value={activeExpenseRow.categoryId}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { categoryId: value });
-                  }}
-                />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--payment">
-                <span>Pago con</span>
-                <AppSelect
-                  ariaLabel="Instrumento de pago del egreso"
-                  options={paymentInstrumentOptions}
-                  value={activeExpenseRow.paymentInstrumentId}
-                  isDisabled={!canEditExpenseColumn(activeExpenseRow, 'paymentInstrumentId')}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { paymentInstrumentId: value });
-                  }}
-                />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--store">
-                <span>Tienda</span>
-                <AppSelect
-                  ariaLabel="Tienda del egreso"
-                  options={storeOptions}
-                  value={activeExpenseRow.storeId}
-                  isDisabled={!canEditExpenseColumn(activeExpenseRow, 'storeId')}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { storeId: value });
-                  }}
-                />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--currency">
-                <span>Moneda</span>
-                <AppSelect
-                  ariaLabel="Moneda del egreso"
-                  options={currencyOptions}
-                  value={activeExpenseRow.currencyCode}
-                  onChange={(value) => {
-                    updateExpenseRow(activeExpenseRow.id, { currencyCode: value as 'MXN' | 'USD' });
-                  }}
-                />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--fx">
-                <span>FX</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.000001"
-                  value={activeExpenseRow.currencyCode === 'MXN' ? '1' : activeExpenseRow.fxRateToMxn}
-                  disabled={activeExpenseRow.currencyCode === 'MXN'}
-                  onChange={(event) => {
-                    updateExpenseRow(activeExpenseRow.id, { fxRateToMxn: event.target.value });
-                  }}
-                />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--total">
-                <span>Total MXN</span>
-                <input type="text" value={activeExpenseRow.totalAmountMxn} disabled readOnly />
-              </label>
-
-              <label className="catalog-field expense-entry-editor__field expense-entry-editor__field--notes">
-                <span>Notas</span>
-                <input
-                  type="text"
-                  value={activeExpenseRow.notes}
-                  placeholder="Opcional"
-                  onChange={(event) => {
-                    updateExpenseRow(activeExpenseRow.id, { notes: event.target.value });
-                  }}
-                />
-              </label>
-            </div>
-
-            <div className="expense-entry-editor__footer">
-              <div className="expense-entry-editor__actions">
-                <button
-                  type="button"
-                  className="expense-entry-editor__action expense-entry-editor__action--save"
-                  aria-label="Guardar egreso"
-                  title="Guardar"
-                  onClick={() => {
-                    void persistExpenseRow(activeExpenseRow.id);
-                  }}
-                >
-                  <FontAwesomeIcon icon={faFloppyDisk} />
-                </button>
-                {activeExpenseRow.isDraft ? (
+              <div className="expense-entry-editor__footer">
+                <div className="expense-entry-editor__actions">
                   <button
                     type="button"
-                    className="expense-entry-editor__action expense-entry-editor__action--clear"
-                    aria-label="Limpiar captura"
-                    title="Limpiar"
+                    className="expense-entry-editor__action expense-entry-editor__action--save"
+                    aria-label="Guardar egreso"
+                    title="Guardar"
                     onClick={() => {
-                      handleRevertRow(activeExpenseRow);
+                      void persistExpenseRow(activeExpenseRow.id);
                     }}
                   >
-                    <FontAwesomeIcon icon={faEraser} />
+                    <FontAwesomeIcon icon={faFloppyDisk} />
                   </button>
-                ) : (
-                  <>
+                  {activeExpenseRow.isDraft ? (
                     <button
                       type="button"
-                      className="expense-entry-editor__action expense-entry-editor__action--duplicate"
-                      aria-label="Duplicar egreso"
-                      title="Duplicar"
-                      onClick={() => {
-                        handleDuplicateRow(activeExpenseRow);
-                      }}
-                    >
-                      <FontAwesomeIcon icon={faCopy} />
-                    </button>
-                    <button
-                      type="button"
-                      className="expense-entry-editor__action expense-entry-editor__action--revert"
-                      aria-label="Deshacer cambios"
-                      title="Deshacer"
+                      className="expense-entry-editor__action expense-entry-editor__action--clear"
+                      aria-label="Limpiar captura"
+                      title="Limpiar"
                       onClick={() => {
                         handleRevertRow(activeExpenseRow);
                       }}
                     >
-                      <FontAwesomeIcon icon={faRotateLeft} />
+                      <FontAwesomeIcon icon={faEraser} />
                     </button>
-                    {activeExpenseRow.ticketId ? (
-                      <Link
-                        className="expense-entry-editor__action"
-                        to={`/spending/scan?ticket=${activeExpenseRow.ticketId}`}
-                        aria-label="Ver ticket"
-                        title="Ver ticket"
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        className="expense-entry-editor__action expense-entry-editor__action--duplicate"
+                        aria-label="Duplicar egreso"
+                        title="Duplicar"
+                        onClick={() => {
+                          handleDuplicateRow(activeExpenseRow);
+                        }}
                       >
-                        <FontAwesomeIcon icon={faReceipt} />
-                      </Link>
-                    ) : null}
+                        <FontAwesomeIcon icon={faCopy} />
+                      </button>
+                      <button
+                        type="button"
+                        className="expense-entry-editor__action expense-entry-editor__action--revert"
+                        aria-label="Deshacer cambios"
+                        title="Deshacer"
+                        onClick={() => {
+                          handleRevertRow(activeExpenseRow);
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faRotateLeft} />
+                      </button>
+                      {activeExpenseRow.ticketId ? (
+                        <Link
+                          className="expense-entry-editor__action"
+                          to={`/spending/scan?ticket=${activeExpenseRow.ticketId}`}
+                          aria-label="Ver ticket"
+                          title="Ver ticket"
+                        >
+                          <FontAwesomeIcon icon={faReceipt} />
+                        </Link>
+                      ) : null}
+                      <button
+                        type="button"
+                        className="expense-entry-editor__action expense-entry-editor__action--delete"
+                        aria-label="Eliminar egreso"
+                        title="Eliminar"
+                        onClick={() => {
+                          void handleDeleteRow(activeExpenseRow);
+                        }}
+                      >
+                        <FontAwesomeIcon icon={faTrash} />
+                      </button>
+                    </>
+                  )}
+                  {currentDraftRow && currentDraftRow.id !== activeExpenseRow.id ? (
                     <button
                       type="button"
-                      className="expense-entry-editor__action expense-entry-editor__action--delete"
-                      aria-label="Eliminar egreso"
-                      title="Eliminar"
+                      className="expense-entry-editor__action expense-entry-editor__action--clear"
+                      aria-label="Ir a nueva captura"
+                      title="Nueva captura"
                       onClick={() => {
-                        void handleDeleteRow(activeExpenseRow);
+                        setActiveExpenseId(currentDraftRow.id);
+                        setIsExpenseModalOpen(true);
                       }}
                     >
-                      <FontAwesomeIcon icon={faTrash} />
+                      <FontAwesomeIcon icon={faPlus} />
                     </button>
-                  </>
-                )}
-                {currentDraftRow && currentDraftRow.id !== activeExpenseRow.id ? (
-                  <button
-                    type="button"
-                    className="expense-entry-editor__action expense-entry-editor__action--clear"
-                    aria-label="Ir a nueva captura"
-                    title="Nueva captura"
-                    onClick={() => {
-                      setActiveExpenseId(currentDraftRow.id);
-                    }}
-                  >
-                    <FontAwesomeIcon icon={faPlus} />
-                  </button>
-                ) : null}
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          </Modal>
         ) : null}
 
         {showHistoryPanel ? (
@@ -1635,9 +1851,7 @@ export function ExpensesPage() {
             onCellClick={(args) => {
               if (args.row) {
                 setActiveExpenseId(args.row.id);
-                if (isNarrowViewport) {
-                  setMobilePrimaryPanel('capture');
-                }
+                setIsExpenseModalOpen(true);
               }
             }}
             defaultColumnOptions={{ resizable: true }}
