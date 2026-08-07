@@ -76,6 +76,10 @@ export type DividendImportPreviewRow = {
   netAmountMxn: string;
   sourceDividendTransactionId: string;
   sourceTaxTransactionId: string;
+  // Optional: when a preview row represents an ambiguous group, include raw items
+  pairingGroupKey?: string;
+  groupDividends?: DividendImportRawItem[];
+  groupTaxes?: DividendImportRawItem[];
 };
 
 export type DividendImportParseResult = {
@@ -187,6 +191,64 @@ export function buildSecurityOptionLookup(securities: Security[]) {
   return normalizedTickerToSecurityIds;
 }
 
+const DEFAULT_ISR_RATE = 0.1;
+const PAIRING_TOLERANCE = 0.1; // 10%
+
+function pairDividendsAndTaxes(
+  dividends: DividendImportRawItem[],
+  taxes: DividendImportRawItem[],
+  isrRate = DEFAULT_ISR_RATE,
+  tolerance = PAIRING_TOLERANCE,
+) {
+  const matchedPairs: { dividend: DividendImportRawItem; tax: DividendImportRawItem; relativeError: number }[] = [];
+  if (dividends.length === 0 || taxes.length === 0) {
+    return {
+      matchedPairs,
+      unmatchedDividends: dividends.slice(),
+      unmatchedTaxes: taxes.slice(),
+      highConfidence: false,
+    };
+  }
+
+  const candidates: { divIdx: number; taxIdx: number; relativeError: number }[] = [];
+
+  for (let i = 0; i < dividends.length; i += 1) {
+    for (let j = 0; j < taxes.length; j += 1) {
+      const d = dividends[i];
+      const t = taxes[j];
+      const expectedTax = Math.abs(d.amount * isrRate);
+      const relativeError = expectedTax === 0 ? Math.abs(t.amount - expectedTax) : Math.abs(t.amount - expectedTax) / expectedTax;
+      candidates.push({ divIdx: i, taxIdx: j, relativeError });
+    }
+  }
+
+  candidates.sort((a, b) => a.relativeError - b.relativeError);
+
+  const usedDiv = new Set<number>();
+  const usedTax = new Set<number>();
+
+  for (const c of candidates) {
+    if (c.relativeError > tolerance) continue;
+    if (usedDiv.has(c.divIdx) || usedTax.has(c.taxIdx)) continue;
+    usedDiv.add(c.divIdx);
+    usedTax.add(c.taxIdx);
+    matchedPairs.push({ dividend: dividends[c.divIdx], tax: taxes[c.taxIdx], relativeError: c.relativeError });
+  }
+
+  const unmatchedDividends = dividends.filter((_, idx) => !usedDiv.has(idx));
+  const unmatchedTaxes = taxes.filter((_, idx) => !usedTax.has(idx));
+
+  const highConfidence =
+    matchedPairs.length > 0 && matchedPairs.length === Math.min(dividends.length, taxes.length) && matchedPairs.every((p) => p.relativeError <= tolerance);
+
+  return {
+    matchedPairs,
+    unmatchedDividends,
+    unmatchedTaxes,
+    highConfidence,
+  };
+}
+
 export function parseDividendImportFile(
   rawJson: string,
   config: {
@@ -281,66 +343,180 @@ export function parseDividendImportFile(
 
   const parsedFxRate = Number(config.currencyCode === 'MXN' ? '1' : config.fxRateToMxn);
   const previewRows: DividendImportPreviewRow[] = [...groupedItems.values()]
-    .map((group) => {
-      const issues: DividendImportPreviewIssue[] = [];
+    .flatMap((group) => {
       const matchedSecurityIds = securityLookup.get(group.normalizedTicker) ?? [];
-      const dividendItem = group.dividends[0] ?? null;
-      const taxItem = group.taxes[0] ?? null;
-      const displayEntryDate = dividendItem?.entryDate ?? taxItem?.entryDate ?? group.entryDate;
-      const displayRawTicker = dividendItem?.rawTicker ?? taxItem?.rawTicker ?? group.rawTicker;
 
-      if (group.dividends.length === 0) {
-        issues.push({ code: 'missing-dividend', message: 'Se encontró una retención sin dividendo.' });
+      // Simple case: at most one dividend and at most one tax
+      if (group.dividends.length <= 1 && group.taxes.length <= 1) {
+        const issues: DividendImportPreviewIssue[] = [];
+        const dividendItem = group.dividends[0] ?? null;
+        const taxItem = group.taxes[0] ?? null;
+        const displayEntryDate = dividendItem?.entryDate ?? taxItem?.entryDate ?? group.entryDate;
+        const displayRawTicker = dividendItem?.rawTicker ?? taxItem?.rawTicker ?? group.rawTicker;
+
+        if (group.dividends.length === 0) {
+          issues.push({ code: 'missing-dividend', message: 'Se encontró una retención sin dividendo.' });
+        }
+
+        if (matchedSecurityIds.length !== 1) {
+          issues.push({ code: 'ticker-unresolved', message: 'El ticker no se pudo resolver de forma única.' });
+        }
+
+        const grossAmountOriginal = dividendItem ? dividendItem.amount : 0;
+        const taxWithheldOriginal = taxItem ? taxItem.amount : 0;
+        const netAmountOriginal = grossAmountOriginal - taxWithheldOriginal;
+
+        if (!Number.isFinite(netAmountOriginal) || netAmountOriginal < 0) {
+          issues.push({ code: 'invalid-net', message: 'El neto calculado no es válido.' });
+        }
+
+        const status: DividendImportPreviewStatus = issues.length > 0
+          ? issues.some((issue) => ['missing-dividend', 'multiple-dividends', 'multiple-taxes'].includes(issue.code))
+            ? 'ambiguous-group'
+            : issues.some((issue) => issue.code === 'ticker-unresolved')
+              ? 'ticker-unresolved'
+              : 'invalid'
+          : 'ready';
+
+        return [
+          {
+            id: createPreviewRowId('dividend-import'),
+            selected: status === 'ready',
+            status,
+            issues,
+            entryDate: displayEntryDate,
+            rawTicker: displayRawTicker,
+            normalizedTicker: group.normalizedTicker,
+            dividendDescription: dividendItem?.description ?? '',
+            matchedSecurityId: matchedSecurityIds[0] ?? '',
+            brokerId: config.brokerId,
+            currencyCode: config.currencyCode,
+            fxRateToMxn: formatEditableNumber(config.currencyCode === 'MXN' ? 1 : parsedFxRate),
+            grossAmountOriginal: formatEditableNumber(grossAmountOriginal),
+            taxWithheldOriginal: formatEditableNumber(taxWithheldOriginal),
+            netAmountOriginal: formatEditableNumber(netAmountOriginal),
+            netAmountMxn: Number.isFinite(parsedFxRate) && parsedFxRate > 0 ? formatEditableNumber(Number((netAmountOriginal * parsedFxRate).toFixed(6))) : '',
+            sourceDividendTransactionId: dividendItem?.sourceTransactionId ?? '',
+            sourceTaxTransactionId: taxItem?.sourceTransactionId ?? '',
+          },
+        ];
       }
 
-      if (group.dividends.length > 1) {
-        issues.push({ code: 'multiple-dividends', message: 'Hay más de un dividendo para el mismo ticker y fecha.' });
+      // Complex case: multiple dividends and/or multiple taxes — try to auto-pair
+      const { matchedPairs, unmatchedDividends, unmatchedTaxes, highConfidence } = pairDividendsAndTaxes(
+        group.dividends,
+        group.taxes,
+        DEFAULT_ISR_RATE,
+        PAIRING_TOLERANCE,
+      );
+
+      const rows: DividendImportPreviewRow[] = [];
+
+      // Emit rows for matched pairs (these represent ready candidate rows if no other issues)
+      for (const pair of matchedPairs) {
+        const issues: DividendImportPreviewIssue[] = [];
+        if (matchedSecurityIds.length !== 1) {
+          issues.push({ code: 'ticker-unresolved', message: 'El ticker no se pudo resolver de forma única.' });
+        }
+
+        const grossAmountOriginal = pair.dividend.amount;
+        const taxWithheldOriginal = pair.tax.amount;
+        const netAmountOriginal = grossAmountOriginal - taxWithheldOriginal;
+
+        if (!Number.isFinite(netAmountOriginal) || netAmountOriginal < 0) {
+          issues.push({ code: 'invalid-net', message: 'El neto calculado no es válido.' });
+        }
+
+        const status: DividendImportPreviewStatus = issues.length > 0 ? 'invalid' : 'ready';
+
+        rows.push({
+          id: createPreviewRowId('dividend-import'),
+          selected: status === 'ready',
+          status,
+          issues,
+          entryDate: pair.dividend.entryDate || pair.tax.entryDate || group.entryDate,
+          rawTicker: pair.dividend.rawTicker || pair.tax.rawTicker || group.rawTicker,
+          normalizedTicker: group.normalizedTicker,
+          dividendDescription: pair.dividend.description ?? '',
+          matchedSecurityId: matchedSecurityIds[0] ?? '',
+          brokerId: config.brokerId,
+          currencyCode: config.currencyCode,
+          fxRateToMxn: formatEditableNumber(config.currencyCode === 'MXN' ? 1 : parsedFxRate),
+          grossAmountOriginal: formatEditableNumber(grossAmountOriginal),
+          taxWithheldOriginal: formatEditableNumber(taxWithheldOriginal),
+          netAmountOriginal: formatEditableNumber(netAmountOriginal),
+          netAmountMxn: Number.isFinite(parsedFxRate) && parsedFxRate > 0 ? formatEditableNumber(Number((netAmountOriginal * parsedFxRate).toFixed(6))) : '',
+          sourceDividendTransactionId: pair.dividend.sourceTransactionId ?? '',
+          sourceTaxTransactionId: pair.tax.sourceTransactionId ?? '',
+        });
       }
 
-      if (group.taxes.length > 1) {
-        issues.push({ code: 'multiple-taxes', message: 'Hay más de una retención para el mismo ticker y fecha.' });
+      // If there are unmatched items or pairing failed, emit an ambiguous group row to let the user resolve manually
+      if (unmatchedDividends.length > 0 || unmatchedTaxes.length > 0 || matchedPairs.length === 0 || !highConfidence) {
+        const dividendItem = group.dividends[0] ?? null;
+        const taxItem = group.taxes[0] ?? null;
+        const displayEntryDate = dividendItem?.entryDate ?? taxItem?.entryDate ?? group.entryDate;
+        const displayRawTicker = dividendItem?.rawTicker ?? taxItem?.rawTicker ?? group.rawTicker;
+
+        const issues: DividendImportPreviewIssue[] = [];
+        if (group.dividends.length === 0) {
+          issues.push({ code: 'missing-dividend', message: 'Se encontró una retención sin dividendo.' });
+        }
+
+        if (group.dividends.length > 1) {
+          issues.push({ code: 'multiple-dividends', message: 'Hay más de un dividendo para el mismo ticker y fecha.' });
+        }
+
+        if (group.taxes.length > 1) {
+          issues.push({ code: 'multiple-taxes', message: 'Hay más de una retención para el mismo ticker y fecha.' });
+        }
+
+        if (matchedSecurityIds.length !== 1) {
+          issues.push({ code: 'ticker-unresolved', message: 'El ticker no se pudo resolver de forma única.' });
+        }
+
+        const grossAmountOriginal = dividendItem ? dividendItem.amount : 0;
+        const taxWithheldOriginal = taxItem ? taxItem.amount : 0;
+        const netAmountOriginal = grossAmountOriginal - taxWithheldOriginal;
+
+        if (!Number.isFinite(netAmountOriginal) || netAmountOriginal < 0) {
+          issues.push({ code: 'invalid-net', message: 'El neto calculado no es válido.' });
+        }
+
+        const status: DividendImportPreviewStatus = issues.length > 0
+          ? issues.some((issue) => ['missing-dividend', 'multiple-dividends', 'multiple-taxes'].includes(issue.code))
+            ? 'ambiguous-group'
+            : issues.some((issue) => issue.code === 'ticker-unresolved')
+              ? 'ticker-unresolved'
+              : 'invalid'
+          : 'ready';
+
+        rows.push({
+          id: createPreviewRowId('dividend-import'),
+          selected: status === 'ready',
+          status,
+          issues,
+          entryDate: displayEntryDate,
+          rawTicker: displayRawTicker,
+          normalizedTicker: group.normalizedTicker,
+          dividendDescription: dividendItem?.description ?? '',
+          matchedSecurityId: matchedSecurityIds[0] ?? '',
+          brokerId: config.brokerId,
+          currencyCode: config.currencyCode,
+          fxRateToMxn: formatEditableNumber(config.currencyCode === 'MXN' ? 1 : parsedFxRate),
+          grossAmountOriginal: formatEditableNumber(grossAmountOriginal),
+          taxWithheldOriginal: formatEditableNumber(taxWithheldOriginal),
+          netAmountOriginal: formatEditableNumber(netAmountOriginal),
+          netAmountMxn: Number.isFinite(parsedFxRate) && parsedFxRate > 0 ? formatEditableNumber(Number((netAmountOriginal * parsedFxRate).toFixed(6))) : '',
+          sourceDividendTransactionId: dividendItem?.sourceTransactionId ?? '',
+          sourceTaxTransactionId: taxItem?.sourceTransactionId ?? '',
+          pairingGroupKey: group.key,
+          groupDividends: group.dividends,
+          groupTaxes: group.taxes,
+        });
       }
 
-      if (matchedSecurityIds.length !== 1) {
-        issues.push({ code: 'ticker-unresolved', message: 'El ticker no se pudo resolver de forma única.' });
-      }
-
-      const grossAmountOriginal = dividendItem ? dividendItem.amount : 0;
-      const taxWithheldOriginal = taxItem ? taxItem.amount : 0;
-      const netAmountOriginal = grossAmountOriginal - taxWithheldOriginal;
-
-      if (!Number.isFinite(netAmountOriginal) || netAmountOriginal < 0) {
-        issues.push({ code: 'invalid-net', message: 'El neto calculado no es válido.' });
-      }
-
-      const status: DividendImportPreviewStatus = issues.length > 0
-        ? issues.some((issue) => ['missing-dividend', 'multiple-dividends', 'multiple-taxes'].includes(issue.code))
-          ? 'ambiguous-group'
-          : issues.some((issue) => issue.code === 'ticker-unresolved')
-            ? 'ticker-unresolved'
-            : 'invalid'
-        : 'ready';
-
-      return {
-        id: createPreviewRowId('dividend-import'),
-        selected: status === 'ready',
-        status,
-        issues,
-        entryDate: displayEntryDate,
-        rawTicker: displayRawTicker,
-        normalizedTicker: group.normalizedTicker,
-        dividendDescription: dividendItem?.description ?? '',
-        matchedSecurityId: matchedSecurityIds[0] ?? '',
-        brokerId: config.brokerId,
-        currencyCode: config.currencyCode,
-        fxRateToMxn: formatEditableNumber(config.currencyCode === 'MXN' ? 1 : parsedFxRate),
-        grossAmountOriginal: formatEditableNumber(grossAmountOriginal),
-        taxWithheldOriginal: formatEditableNumber(taxWithheldOriginal),
-        netAmountOriginal: formatEditableNumber(netAmountOriginal),
-        netAmountMxn: Number.isFinite(parsedFxRate) && parsedFxRate > 0 ? formatEditableNumber(Number((netAmountOriginal * parsedFxRate).toFixed(6))) : '',
-        sourceDividendTransactionId: dividendItem?.sourceTransactionId ?? '',
-        sourceTaxTransactionId: taxItem?.sourceTransactionId ?? '',
-      };
+      return rows;
     })
     .sort((left, right) => right.entryDate.localeCompare(left.entryDate) || left.normalizedTicker.localeCompare(right.normalizedTicker));
 
