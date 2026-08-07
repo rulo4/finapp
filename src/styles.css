@@ -2858,6 +2858,68 @@ textarea {
   cursor: zoom-in;
 }
 
+/* Modal styles for pairing dialog */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(15, 23, 42, 0.55);
+  z-index: 1100;
+  padding: 24px;
+}
+
+.modal {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.12);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  max-width: 980px;
+  width: 100%;
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+}
+
+.modal__header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+.modal__header h3 {
+  margin: 0;
+  font-size: 1.125rem;
+}
+
+.modal__body {
+  padding: 16px 20px;
+}
+
+.modal__footer {
+  padding: 12px 20px;
+  border-top: 1px solid rgba(229, 231, 235, 0.6);
+}
+
+.modal .list-plain {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.app-modal-select {
+  min-height: 40px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  width: 100%;
+}
+
+.modal .tickets-button {
+  min-width: auto;
+}
+
 .ticket-grid-thumb__image,
 .ticket-grid-thumb__placeholder {
   width: 100%;
