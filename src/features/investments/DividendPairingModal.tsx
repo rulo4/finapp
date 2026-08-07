@@ -65,7 +65,10 @@ export default function DividendPairingModal({ isOpen, onClose, onApply, groupDi
                 {groupDividends.map((d) => (
                   <li key={d.sourceTransactionId} style={{ marginBottom: 8 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <div style={{ minWidth: 220 }}>{d.entryDate} — {d.amount} — {d.sourceTransactionId}</div>
+                      <div style={{ minWidth: 220 }}>
+                        <div>{d.entryDate} — {d.amount} — {d.sourceTransactionId}</div>
+                        {d.description ? <p className="card__text" style={{ margin: 0 }}>{d.description}</p> : null}
+                      </div>
                       <div style={{ flex: 1 }}>
                         <select
                           className="app-modal-select"
@@ -75,7 +78,7 @@ export default function DividendPairingModal({ isOpen, onClose, onApply, groupDi
                           <option value="">— No emparejar —</option>
                           {groupTaxes.map((t) => (
                             <option key={t.sourceTransactionId} value={t.sourceTransactionId} disabled={Object.values(selections).includes(t.sourceTransactionId) && selections[d.sourceTransactionId] !== t.sourceTransactionId}>
-                              {t.entryDate} — {t.amount} — {t.sourceTransactionId}
+                              {t.entryDate} — {t.amount} — {t.sourceTransactionId} {t.description ? ` — ${t.description}` : ''}
                             </option>
                           ))}
                         </select>
@@ -92,6 +95,7 @@ export default function DividendPairingModal({ isOpen, onClose, onApply, groupDi
                 {groupTaxes.map((t) => (
                   <li key={t.sourceTransactionId} style={{ marginBottom: 8 }}>
                     <div>{t.entryDate} — {t.amount} — {t.sourceTransactionId}</div>
+                    {t.description ? <p className="card__text" style={{ margin: 0 }}>{t.description}</p> : null}
                   </li>
                 ))}
               </ul>
