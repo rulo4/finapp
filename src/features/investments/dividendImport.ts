@@ -102,7 +102,7 @@ const DIVIDEND_SUB_TRANSACTION_TYPES = new Set([1, 266, 974, 2394]);
 const TAX_SUB_TRANSACTION_TYPES = new Set([3336, 3588, 3590]);
 const CAPITAL_RETURN_SUB_TRANSACTION_TYPE = 266;
 
-function createPreviewRowId(prefix: string) {
+export function createPreviewRowId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
@@ -194,7 +194,7 @@ export function buildSecurityOptionLookup(securities: Security[]) {
 const DEFAULT_ISR_RATE = 0.1;
 const PAIRING_TOLERANCE = 0.1; // 10%
 
-function pairDividendsAndTaxes(
+export function pairDividendsAndTaxes(
   dividends: DividendImportRawItem[],
   taxes: DividendImportRawItem[],
   isrRate = DEFAULT_ISR_RATE,

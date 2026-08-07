@@ -9,6 +9,7 @@ import {
   markDividendImportDuplicates,
   normalizeDividendImportPreviewRow,
   parseDividendImportFile,
+  createPreviewRowId,
   type DividendImportCurrencyCode,
   type DividendImportPreviewIssue,
   type DividendImportPreviewRow,
@@ -18,9 +19,11 @@ import {
   formatSecurityOptionLabel,
   investmentCurrencyOptions,
   isErrorFeedback,
+  formatEditableNumber,
   type Broker,
   type Security,
 } from './shared';
+import DividendPairingModal from './DividendPairingModal';
 
 type DividendImportPanelProps = {
   brokers: Broker[];
@@ -79,6 +82,8 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
   const [mobilePrimaryPanel, setMobilePrimaryPanel] = useState<'capture' | 'preview'>('capture');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const previewRowsRef = useRef<DividendImportPreviewRow[]>([]);
+  const [pairingModalRow, setPairingModalRow] = useState<DividendImportPreviewRow | null>(null);
+  const [isPairingModalOpen, setIsPairingModalOpen] = useState(false);
 
   useEffect(() => {
     previewRowsRef.current = previewRows;
@@ -537,12 +542,129 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
         width: 280,
         renderCell: ({ row }) => formatIssuesLabel(row.issues),
       },
+      {
+        key: 'pairing',
+        name: 'Acciones',
+        width: 140,
+        renderCell: ({ row }) => (
+          row.pairingGroupKey ? (
+            <button
+              type="button"
+              className="tickets-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setPairingModalRow(row);
+                setIsPairingModalOpen(true);
+              }}
+            >
+              Formar parejas
+            </button>
+          ) : null
+        ),
+      },
     ],
     [areAllSelectableRowsSelected, brokerLabelById, handleToggleAllSelectableRows, handleTogglePreviewRowSelection, isSaving, selectablePreviewRows.length, securityLabelById, securityOptions],
   );
 
   const showCapturePanel = !isNarrowViewport || mobilePrimaryPanel === 'capture';
   const showPreviewPanel = !isNarrowViewport || mobilePrimaryPanel === 'preview';
+
+  const handleApplyPairings = useCallback(
+    async (pairs: { dividendId: string; taxId: string }[]) => {
+      if (!pairingModalRow || !pairingModalRow.pairingGroupKey) return;
+
+      const groupKey = pairingModalRow.pairingGroupKey;
+      const groupDividends = pairingModalRow.groupDividends ?? [];
+      const groupTaxes = pairingModalRow.groupTaxes ?? [];
+      const parsedFxRate = Number(pairingModalRow.currencyCode === 'MXN' ? '1' : pairingModalRow.fxRateToMxn);
+
+      // Build matched pairs and unmatched
+      const matchedPairs = pairs.map((p) => ({
+        dividend: groupDividends.find((d) => d.sourceTransactionId === p.dividendId) as typeof groupDividends[number],
+        tax: groupTaxes.find((t) => t.sourceTransactionId === p.taxId) as typeof groupTaxes[number] | undefined,
+      }));
+
+      const unmatchedDividends = groupDividends.filter((d) => !pairs.some((p) => p.dividendId === d.sourceTransactionId));
+      const unmatchedTaxes = groupTaxes.filter((t) => !pairs.some((p) => p.taxId === t.sourceTransactionId));
+
+      const nextRows = previewRowsRef.current.filter((r) => r.pairingGroupKey !== groupKey);
+
+      for (const pair of matchedPairs) {
+        const gross = pair.dividend.amount;
+        const taxAmount = pair.tax?.amount ?? 0;
+        const net = gross - taxAmount;
+
+        nextRows.push({
+          id: createPreviewRowId('dividend-import'),
+          selected: true,
+          status: 'ready',
+          issues: [],
+          entryDate: pair.dividend.entryDate || pair.dividend.settlementDate || pairingModalRow.entryDate,
+          rawTicker: pair.dividend.rawTicker,
+          normalizedTicker: pairingModalRow.normalizedTicker,
+          dividendDescription: pair.dividend.description ?? '',
+          matchedSecurityId: pairingModalRow.matchedSecurityId ?? '',
+          brokerId: pairingModalRow.brokerId || brokerId,
+          currencyCode: pairingModalRow.currencyCode,
+          fxRateToMxn: formatEditableNumber(pairingModalRow.currencyCode === 'MXN' ? 1 : parsedFxRate),
+          grossAmountOriginal: formatEditableNumber(gross),
+          taxWithheldOriginal: formatEditableNumber(taxAmount),
+          netAmountOriginal: formatEditableNumber(net),
+          netAmountMxn: Number.isFinite(parsedFxRate) && parsedFxRate > 0 ? formatEditableNumber(Number((net * parsedFxRate).toFixed(6))) : '',
+          sourceDividendTransactionId: pair.dividend.sourceTransactionId ?? '',
+          sourceTaxTransactionId: pair.tax?.sourceTransactionId ?? '',
+        } as DividendImportPreviewRow);
+      }
+
+      if (unmatchedDividends.length > 0 || unmatchedTaxes.length > 0) {
+        // Re-insert an ambiguous group row for remaining items
+        const displayDividend = unmatchedDividends[0] ?? undefined;
+        const displayTax = unmatchedTaxes[0] ?? undefined;
+        const displayEntryDate = displayDividend?.entryDate ?? displayTax?.entryDate ?? pairingModalRow.entryDate;
+        const displayRawTicker = displayDividend?.rawTicker ?? displayTax?.rawTicker ?? pairingModalRow.rawTicker;
+
+        nextRows.push({
+          id: createPreviewRowId('dividend-import'),
+          selected: false,
+          status: 'ambiguous-group',
+          issues: [{ code: 'multiple-dividends', message: 'Hay más de un dividendo para el mismo ticker y fecha.' }],
+          entryDate: displayEntryDate,
+          rawTicker: displayRawTicker,
+          normalizedTicker: pairingModalRow.normalizedTicker,
+          dividendDescription: displayDividend?.description ?? '',
+          matchedSecurityId: pairingModalRow.matchedSecurityId ?? '',
+          brokerId: pairingModalRow.brokerId || brokerId,
+          currencyCode: pairingModalRow.currencyCode,
+          fxRateToMxn: pairingModalRow.fxRateToMxn,
+          grossAmountOriginal: formatEditableNumber(unmatchedDividends[0]?.amount ?? 0),
+          taxWithheldOriginal: formatEditableNumber(unmatchedTaxes[0]?.amount ?? 0),
+          netAmountOriginal: formatEditableNumber((unmatchedDividends[0]?.amount ?? 0) - (unmatchedTaxes[0]?.amount ?? 0)),
+          netAmountMxn: '',
+          sourceDividendTransactionId: unmatchedDividends[0]?.sourceTransactionId ?? '',
+          sourceTaxTransactionId: unmatchedTaxes[0]?.sourceTransactionId ?? '',
+          pairingGroupKey: groupKey,
+          groupDividends: unmatchedDividends,
+          groupTaxes: unmatchedTaxes,
+        } as DividendImportPreviewRow);
+      }
+
+      // Sort and apply
+      nextRows.sort((left, right) => right.entryDate.localeCompare(left.entryDate) || left.normalizedTicker.localeCompare(right.normalizedTicker));
+      applyPreviewRows(nextRows);
+
+      try {
+        const rowsWithDupes = await loadDuplicateStatus(nextRows);
+        applyPreviewRows(rowsWithDupes);
+        setFeedback(`Se aplicaron ${matchedPairs.length} emparejamientos. Revisa las filas para continuar.`);
+      } catch (error) {
+        setFeedback(error instanceof Error ? error.message : 'No fue posible validar duplicados después de emparejar.');
+      } finally {
+        setPairingModalRow(null);
+        setIsPairingModalOpen(false);
+      }
+    },
+    [applyPreviewRows, brokerId, loadDuplicateStatus, setFeedback, setIsPairingModalOpen, setPairingModalRow, pairingModalRow],
+  );
 
   return (
     <section className="card finance-panel dividend-import-panel">
@@ -717,6 +839,18 @@ export function DividendImportPanel({ brokers, securities, onImported }: Dividen
         </div>
       ) : showPreviewPanel ? (
         <div className="dividend-import-panel__empty">Configura broker, moneda y archivo para generar la previsualización.</div>
+      ) : null}
+      {isPairingModalOpen && pairingModalRow ? (
+        <DividendPairingModal
+          isOpen={isPairingModalOpen}
+          onClose={() => {
+            setIsPairingModalOpen(false);
+            setPairingModalRow(null);
+          }}
+          onApply={(pairs) => void handleApplyPairings(pairs)}
+          groupDividends={pairingModalRow.groupDividends ?? []}
+          groupTaxes={pairingModalRow.groupTaxes ?? []}
+        />
       ) : null}
     </section>
   );
