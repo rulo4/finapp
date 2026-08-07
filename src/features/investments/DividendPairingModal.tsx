@@ -68,6 +68,7 @@ export default function DividendPairingModal({ isOpen, onClose, onApply, groupDi
                       <div style={{ minWidth: 220 }}>{d.entryDate} — {d.amount} — {d.sourceTransactionId}</div>
                       <div style={{ flex: 1 }}>
                         <select
+                          className="app-modal-select"
                           value={selections[d.sourceTransactionId] ?? ''}
                           onChange={(e) => handleSelect(d.sourceTransactionId, e.target.value)}
                         >
