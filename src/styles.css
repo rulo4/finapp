@@ -1219,7 +1219,13 @@ textarea {
 }
 
 .react-datepicker-popper {
-  z-index: 30;
+  /* Ensure the datepicker popper appears above modal overlays. Use !important
+     to override inline styles the library may apply at runtime. */
+  z-index: 10000 !important;
+}
+
+.react-datepicker__portal {
+  z-index: 10000 !important;
 }
 
 .react-datepicker__portal {
