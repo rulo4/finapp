@@ -3205,8 +3205,8 @@ textarea {
 /* Linear form layout when expense editor is shown in a modal */
 .image-viewer__content .linear-expense-form {
   display: grid;
-  /* Use the same 12-column layout as the inline editor so fields fill rows evenly on desktop */
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  /* Use a single-column layout in the modal so desktop matches mobile stacking */
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: start;
   width: min(100%, 720px);
@@ -3270,7 +3270,21 @@ textarea {
 }
 
 .image-viewer__content .linear-expense-form .expense-entry-editor__subtotal-row {
-  grid-template-columns: 1fr 36px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* Ensure each field in the modal stacks on its own row so desktop mirrors mobile
+   and icons (mic, calc) stay right-aligned inside the field control. */
+.image-viewer__content .linear-expense-form .expense-entry-editor__field {
+  grid-column: 1 / -1;
+  max-inline-size: 100%;
+}
+
+.image-viewer__content .linear-expense-form .expense-entry-editor__field-control > :not(.expense-entry-editor__mic-button) {
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .image-viewer__content .linear-expense-form .expense-entry-editor__footer {
