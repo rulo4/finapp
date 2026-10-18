@@ -89,6 +89,8 @@ type ExpenseGridRow = {
   notes: string;
 };
 
+type DefaultExpenseValues = Pick<ExpenseGridRow, 'unitOfMeasureId' | 'paymentInstrumentId' | 'storeId'>;
+
 type ExpenseTableFilters = {
   entryDate: string;
   concept: string;
@@ -166,7 +168,11 @@ function createLocalId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function createDraftExpenseRow(): ExpenseGridRow {
+function createDraftExpenseRow(defaultValues: DefaultExpenseValues = {
+  unitOfMeasureId: '',
+  paymentInstrumentId: '',
+  storeId: '',
+}): ExpenseGridRow {
   return {
     id: createLocalId('expense-draft'),
     persistedId: null,
@@ -176,10 +182,10 @@ function createDraftExpenseRow(): ExpenseGridRow {
     entryDate: getTodayDate(),
     concept: '',
     quantity: '1',
-    unitOfMeasureId: '',
+    unitOfMeasureId: defaultValues.unitOfMeasureId,
     categoryId: '',
-    paymentInstrumentId: '',
-    storeId: '',
+    paymentInstrumentId: defaultValues.paymentInstrumentId,
+    storeId: defaultValues.storeId,
     ticketUrl: '',
     ticketId: null,
     currencyCode: 'MXN',
@@ -198,10 +204,30 @@ function canEditExpenseColumn(row: ExpenseGridRow, columnKey: string) {
   return columnKey !== 'entryDate' && columnKey !== 'paymentInstrumentId' && columnKey !== 'storeId';
 }
 
-function withExpenseDraftRow(rows: ExpenseGridRow[]) {
-  const draftRow = rows.find((row) => row.isDraft) ?? createDraftExpenseRow();
+function withExpenseDraftRow(rows: ExpenseGridRow[], defaultValues: DefaultExpenseValues) {
+  const draftRow = rows.find((row) => row.isDraft) ?? createDraftExpenseRow(defaultValues);
 
   return [draftRow, ...rows.filter((row) => !row.isDraft)];
+}
+
+function hasZeroSubtotal(row: ExpenseGridRow) {
+  const subtotal = row.subtotalOriginal.trim();
+  return subtotal !== '' && Number.isFinite(Number(subtotal)) && Number(subtotal) === 0;
+}
+
+function getDefaultExpenseValues(
+  units: UnitOfMeasure[],
+  instruments: PaymentInstrument[],
+  stores: Store[],
+): DefaultExpenseValues {
+  const findIdByName = <T extends { id: string; name: string }>(items: T[], names: string[]) =>
+    items.find((item) => names.includes(item.name.trim().toLocaleLowerCase('es-MX')))?.id ?? '';
+
+  return {
+    unitOfMeasureId: findIdByName(units, ['serv', 'servicio', 'servicios']),
+    paymentInstrumentId: findIdByName(instruments, ['efectivo']),
+    storeId: findIdByName(stores, ['local']),
+  };
 }
 
 function formatCurrencyTotal(value: number) {
@@ -548,6 +574,10 @@ export function ExpensesPage() {
   const rowsRef = useRef<ExpenseGridRow[]>([]);
   const persistedRowsRef = useRef<Map<string, ExpenseGridRow>>(new Map());
   const gridRef = useRef<DataGridHandle>(null);
+  const defaultExpenseValues = useMemo(
+    () => getDefaultExpenseValues(unitsOfMeasure, paymentInstruments, stores),
+    [paymentInstruments, stores, unitsOfMeasure],
+  );
   
 
   useEffect(() => {
@@ -635,7 +665,14 @@ export function ExpensesPage() {
     const normalizedEntries = ((entriesResult.data as ExpenseEntryRow[]) ?? []).map(normalizeExpenseEntry);
     const nextRows = normalizedEntries.map((entry) => toExpenseGridRow(entry, entry.ticket_url ?? null));
     persistedRowsRef.current = new Map(nextRows.map((row) => [row.id, row]));
-    const loadedRows = withExpenseDraftRow(nextRows);
+    const loadedRows = withExpenseDraftRow(
+      nextRows,
+      getDefaultExpenseValues(
+        (unitsResult.data as UnitOfMeasure[]) ?? [],
+        (instrumentsResult.data as PaymentInstrument[]) ?? [],
+        (storesResult.data as Store[]) ?? [],
+      ),
+    );
 
     rowsRef.current = loadedRows;
     setCategories((categoriesResult.data as ExpenseCategory[]) ?? []);
@@ -817,9 +854,15 @@ export function ExpensesPage() {
         let nextRows: ExpenseGridRow[];
 
         if (!isDateWithinRange(savedRow.entryDate, activeDateRange)) {
-          nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== rowId));
+          nextRows = withExpenseDraftRow(
+            currentRows.filter((candidate) => candidate.id !== rowId),
+            defaultExpenseValues,
+          );
         } else {
-          nextRows = withExpenseDraftRow(currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate)));
+          nextRows = withExpenseDraftRow(
+            currentRows.map((candidate) => (candidate.id === rowId ? savedRow : candidate)),
+            defaultExpenseValues,
+          );
         }
 
         rowsRef.current = nextRows;
@@ -829,14 +872,17 @@ export function ExpensesPage() {
 
       setFeedback(row.isDraft ? 'Egreso guardado correctamente.' : 'Egreso actualizado correctamente.');
     },
-    [activeDateRange, unitsOfMeasure],
+    [activeDateRange, defaultExpenseValues, unitsOfMeasure],
   );
 
   const handleDeleteRow = useCallback(
     async (row: ExpenseGridRow) => {
       if (row.isDraft) {
         setRows((currentRows) => {
-          const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
+          const nextRows = withExpenseDraftRow(
+            currentRows.filter((candidate) => candidate.id !== row.id),
+            defaultExpenseValues,
+          );
           rowsRef.current = nextRows;
           setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
           return nextRows;
@@ -863,20 +909,26 @@ export function ExpensesPage() {
 
       persistedRowsRef.current.delete(row.id);
       setRows((currentRows) => {
-        const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
+        const nextRows = withExpenseDraftRow(
+          currentRows.filter((candidate) => candidate.id !== row.id),
+          defaultExpenseValues,
+        );
         rowsRef.current = nextRows;
         setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
         return nextRows;
       });
       setFeedback('Egreso eliminado correctamente.');
     },
-    [],
+    [defaultExpenseValues],
   );
 
   const handleRevertRow = useCallback((row: ExpenseGridRow) => {
     if (row.isDraft) {
       setRows((currentRows) => {
-        const nextRows = withExpenseDraftRow(currentRows.filter((candidate) => candidate.id !== row.id));
+        const nextRows = withExpenseDraftRow(
+          currentRows.filter((candidate) => candidate.id !== row.id),
+          defaultExpenseValues,
+        );
         rowsRef.current = nextRows;
         setActiveExpenseId(nextRows.find((candidate) => candidate.isDraft)?.id ?? nextRows[0]?.id ?? null);
         return nextRows;
@@ -892,13 +944,16 @@ export function ExpensesPage() {
     }
 
     setRows((currentRows) => {
-      const nextRows = withExpenseDraftRow(currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate)));
+      const nextRows = withExpenseDraftRow(
+        currentRows.map((candidate) => (candidate.id === row.id ? persistedRow : candidate)),
+        defaultExpenseValues,
+      );
       rowsRef.current = nextRows;
       setActiveExpenseId(persistedRow.id);
       return nextRows;
     });
     setFeedback('Se restauraron los últimos valores guardados de la fila.');
-  }, []);
+  }, [defaultExpenseValues]);
 
   const handleDuplicateRow = useCallback((row: ExpenseGridRow) => {
     const duplicatedRow = normalizeExpenseGridRow({
@@ -1436,7 +1491,7 @@ export function ExpensesPage() {
                   return;
                 }
 
-                const draft = createDraftExpenseRow();
+                const draft = createDraftExpenseRow(defaultExpenseValues);
                 const nextRows = [draft, ...rowsRef.current.filter((r) => !r.isDraft)];
                 rowsRef.current = nextRows;
                 setRows(nextRows);
@@ -1863,6 +1918,7 @@ export function ExpensesPage() {
               else if (row.status === 'dirty') classNames.push('row-dirty');
               else classNames.push('row-saved');
               if (row.id === activeExpenseRow?.id) classNames.push('row-selected-soft');
+              if (hasZeroSubtotal(row)) classNames.push('row-subtotal-zero');
               return classNames.join(' ');
             }}
             style={{ blockSize: 500 }}
