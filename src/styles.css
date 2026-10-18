@@ -2053,6 +2053,10 @@ textarea {
   background: #ffffff;
 }
 
+.row-subtotal-zero .rdg-cell {
+  background: #fff1f2;
+}
+
 .row-saving {
   background: #fffbea;
 }
@@ -2681,6 +2685,10 @@ textarea {
 
 .row-selected-soft .rdg-cell {
   background: #eef6ff;
+}
+
+.row-subtotal-zero.row-selected-soft .rdg-cell {
+  background: #ffe4e6;
 }
 
 @media (max-width: 1280px) {
